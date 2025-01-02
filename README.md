@@ -12,7 +12,7 @@ This app allows users to easily download and install their `.pkg` content from a
 
 ## Setup Instructions
 
-### 1. Download [here](https://github.com/ItsJokerZz/FPKGi/releases) and install the build.
+Install the latest pre-compiled [`.pkg`](https://github.com/ItsJokerZz/FPKGi/releases) file, or build it yourself as per, [how to build](#how-to-build).
 
 ### 2. Populate Content
 Launch the application to automatically create the necessary directories and `.json` files in the `/data/FPKGi/` folder.
@@ -141,6 +141,28 @@ Unspecified fields will default to loading content from local `.json` files.
     ```
 ---
 
+## How to Build
+
+<details>
+  <summary><strong>Prerequisites</strong></summary>
+  <ul>
+    <li>Unity Hub & Unity 2017.2.0p1 (or equivalent)</li>
+    <li>PS4 SDK 4.50+ with Unity integration</li>
+    <li><a href="https://www.dotnet.microsoft.com/en-us/download/dotnet-framework/net46">.NET 4.6 Dev Pack</a></li>
+  </ul>
+</details>
+
+<details>
+  <summary><strong>Included Precompiled Dependencies</strong></summary>
+  <ul>
+    <li><a href="https://www.github.com/SaladLab/Json.Net.Unity3D">Json.Net.Unity3D</a></li>
+    <li><a href="https://www.github.com/ItsJokerZz/UnityOrbisBridge">UnityOrbisBridge</a></li>
+    <li><a href="https://www.github.com/ItsJokerZz/UOBWrapper">UOBWrapper</a></li>
+  </ul>
+</details>
+
+---
+
 ### Troubleshooting Error Code `CE-36441-8`
 > [!WARNING]  
 > **THIS WILL BLOCK ACCESS to Sony CDN & API, and other related services.**
@@ -172,7 +194,7 @@ This solution is sourced from [r/ps4homebrew](https://www.reddit.com/r/ps4homebr
 - TheMagicalBlob, LightningMods, Al-Azif,
 - Da Puppeh, Kernel Panic, ainofthewired,
 
-and many other amazing people, thank you all!
+and many other amazing people, thank you all! For additional credits, check [UnityOrbisBridge](https://github.com/ItsJokerZz/UnityOrbisBridge/blob/main/README.md#Credits).
 
 ---
 

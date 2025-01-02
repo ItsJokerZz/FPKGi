@@ -1,0 +1,8 @@
+<linker>
+  <assembly fullname="Newtonsoft.Json">
+    <type fullname="Newtonsoft.Json.JsonSerializer"/>
+    <type fullname="Newtonsoft.Json.JsonConvert"/>
+    <type fullname="Newtonsoft.Json.Linq.JObject"/>
+    <!-- Add any other types you are using -->
+  </assembly>
+</linker>

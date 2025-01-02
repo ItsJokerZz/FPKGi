@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<gamePackage>
+  <language id="18" modified="0">
+    <speechRecognitionWords>
+      <text>Unity</text>
+      <pronunciation>y uw n ax t ih</pronunciation>
+    </speechRecognitionWords>
+  </language>
+</gamePackage>
