@@ -1,0 +1,56 @@
+name: Update UnityOrbisBridge Files
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fetch-and-replace:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v3
+        with:
+          repository: ItsJokerZz/UnityOrbisBridge
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: source_repo
+          ref: main
+
+      - name: Checkout target repository
+        uses: actions/checkout@v3
+
+      - name: Create required directories
+        run: |
+          mkdir -p source/Assets/Plugins/PS4
+          mkdir -p source/Assets/Scripts
+          mkdir -p source/Assets/Plugins
+
+      - name: Copy UnityOrbisBridge.prx from source repo
+        run: |
+          curl -L -o source/Assets/Plugins/PS4/UnityOrbisBridge.prx https://raw.githubusercontent.com/ItsJokerZz/UnityOrbisBridge/main/source/plugin/UnityOrbisBridge.prx
+
+      - name: Copy UOBWrapper.cs from source repo
+        run: |
+          curl -L -o source/Assets/Scripts/Globals/UOBWrapper.cs https://raw.githubusercontent.com/ItsJokerZz/UnityOrbisBridge/main/source/wrapper/UOBWrapper.cs
+
+      - name: Copy UnityOrbisBridge.dll from source repo
+        run: |
+          curl -L -o source/Assets/Plugins/UnityOrbisBridge.dll https://raw.githubusercontent.com/ItsJokerZz/UnityOrbisBridge/main/source/Unity-API/UnityOrbisBridge.dll
+
+      - name: Check for changes
+        run: |
+          git diff --exit-code || echo "Changes detected"
+
+      - name: Commit and push changes if there are changes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add source/Assets/Plugins/PS4/UnityOrbisBridge.prx
+            git add source/Assets/Scripts/Globals/UOBWrapper.cs
+            git add source/Assets/Plugins/UnityOrbisBridge.dll
+            git commit -m "Update UnityOrbisBridge & Wrapper with source repo(s)"
+            git push origin HEAD
+          else
+            echo "No changes to commit"
+          fi
