@@ -5,11 +5,11 @@ using static JsonData;
 
 public class Variables
 {
-    public static float version = 0.80f;
+    public static float version = 0.81f;
     public static bool nightly = true;
 
     // may be high due to testing UOB
-    public static int build = 193;
+    public static int build = 24;
 
     #region Global Variabales
     public static RawImage

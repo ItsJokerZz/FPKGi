@@ -247,7 +247,7 @@ public class ControlMenu : MonoBehaviour
 
         goto finish;
 
-    finish: 
+    finish:
         UOB.ResetDownloadVars();
 
         isDownloading = false;
@@ -263,7 +263,6 @@ public class ControlMenu : MonoBehaviour
 
         mainControls.SetActive(true);
     }
-
 
     private string FormatTime(float totalSeconds)
     {

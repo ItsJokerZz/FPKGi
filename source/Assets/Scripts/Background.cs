@@ -54,17 +54,15 @@ public class Background : MonoBehaviour
         UI.ChangeText(mainTexts, 0, ver);
 
         Variables.background = background; // might not be needed?
-
-        CreatePrefabs();
-        InitializeContent();
+       
         SetVariables();
+        CreatePrefabs();
+
+        InitializeContent();
+        SetupDirectories();
+
         HandleConfiguration();
         LoadCustomBackground();
-
-        IO.EnsureDirectoryExists(directoryPath);
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
     }
 
     private void Update()
@@ -108,6 +106,14 @@ public class Background : MonoBehaviour
         UOB.BreakFromSandbox();
 
         // UOB.MountRootDirectories();
+    }
+
+    private void SetupDirectories()
+    {
+        IO.EnsureDirectoryExists(directoryPath);
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
     }
     #endregion
 
@@ -252,6 +258,7 @@ public class Background : MonoBehaviour
         string configPath = Path.Combine(directoryPath, "config.json");
 
         File.WriteAllText(configPath, jsonString);
+
     }
 
     private void HandleConfiguration()
@@ -261,8 +268,8 @@ public class Background : MonoBehaviour
         if (!File.Exists(configPath))
         {
             Print("CONFIG DOESN'T EXIST! CREATING...", PrintType.Warning);
-            SaveConfiguration();
             JSON.ParseJSON(ContentType.Config);
+            SaveConfiguration();
             return;
         }
 
@@ -307,6 +314,8 @@ public class Background : MonoBehaviour
         Variables.ContentURLs["homebrew"] = config.preferences.content_urls.homebrew ?? Variables.ContentURLs["homebrew"];
 
         JSON.ParseJSON((ContentType)contentFilter);
+
+        SaveConfiguration();
     }
 
     public void LoadCustomBackground()
