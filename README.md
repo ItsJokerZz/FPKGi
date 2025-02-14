@@ -209,7 +209,8 @@ of [UnityOrbisBridge](https://github.com/ItsJokerZz/UnityOrbisBridge) plugin and
 A huge thank you to the following members of the [OOSDK Discord](https://www.discord.com/invite/GQr8ydn) for their support:
 - **[TheMagicalBlob](https://github.com/TheMagicalBlob)**, [LightningMods](https://github.com/LightningMods), [Al-Azif](https://github.com/Al-Azif), Da Puppeh, Kernel Panic, lainofthewired, and others.
 
-For more credits, please check out [UnityOrbisBridge](https://www.github.com/ItsJokerZz/UnityOrbisBridge). If I've missed anyone, feel free to reach out.
+For more credits, please check out [UnityOrbisBridge](https://www.github.com/ItsJokerZz/UnityOrbisBridge). If I've missed anyone, feel free to reach out. <br><br>
+For assistance, please leave an issue and/or join my community [Discord server](https://discord.com/invite/RjG4Whf) and I'll help you out.
 
 ## License
 This project is licensed under the GNU General Public License v2.0 - see the [LICENSE](LICENSE) file for details.
