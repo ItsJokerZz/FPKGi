@@ -181,7 +181,8 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
 If you encounter this error, follow these steps to resolve it:
 
 > [!WARNING]  
-> **THIS WILL BLOCK ACCESS to Sony CDN & API, and other related services.**
+> **THIS IS NOT A FIX OR RECOMMENDED BUT THIS CAN HELP AS A TEMPORARILY <br>
+> WORKAROUND UNTIL REAOLVED. PLEASE BE ADVISED AND REVERT THIS AFTER!**
 
 1. **Enable Debug Menu**:  
    - Open the **GoldHEN** menu.  
@@ -190,7 +191,7 @@ If you encounter this error, follow these steps to resolve it:
 2. **Configure NP Environment**:  
    - Go to the PS4's settings.  
    - Navigate to `Debug Settings > PlayStation Network`.  
-   - Set **NP Environment** to `sp-int`.
+   - Set **NP Environment** to `invalid`.
 
 3. **Restart the Console**.  
 
