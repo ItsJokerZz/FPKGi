@@ -1,7 +1,7 @@
 # FPKGi - Nightly Changelog
 
 <details>
-<summary>[ v0.86-nightly Build: 308 ] from Feb 23rd, 2025</summary>
+<summary>[ v0.86-nightly Build: 309 ] from Feb 23rd, 2025</summary>
 
 <br>
 
