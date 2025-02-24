@@ -346,8 +346,23 @@ public class ContentHandler : MonoBehaviour
         else if (contentFilter == (int)ContentType.Homebrew)
         {
             parsedData.Clear();
+            Dictionary<string, GameContent> combinedContent = new Dictionary<string, GameContent>();
+
             await JSON.ParseJSON(ContentType.Homebrew);
+            foreach (var kvp in parsedData)
+                combinedContent[kvp.Key] = kvp.Value;
+
+            parsedData.Clear();
             await JSON.ParseJSON(ContentType.Emulators);
+            foreach (var kvp in parsedData)
+            {
+                string key = kvp.Key;
+                if (combinedContent.ContainsKey(key))
+                    key = $"{key}_emulator";
+                combinedContent[key] = kvp.Value;
+            }
+
+            parsedData = combinedContent;
         }
         else
         {
@@ -362,7 +377,7 @@ public class ContentHandler : MonoBehaviour
                            !string.IsNullOrEmpty(item.Value.size))
             .ToList();
 
-        if (contentFilter == (int)ContentType.ALL)
+        if (contentFilter == (int)ContentType.ALL || contentFilter == (int)ContentType.Homebrew)
             itemsList = Filtering.FilterByRegion(itemsList);
 
         itemsList = Filtering.ApplyFilter(itemsList);
