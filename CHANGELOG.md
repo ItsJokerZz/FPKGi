@@ -1,6 +1,41 @@
 # FPKGi - Nightly Changelog
 
 <details>
+<summary>[ v0.86-nightly Build: 308 ] from Feb 23rd, 2025</summary>
+
+<br>
+
+### **Fixes:**
+- Empty or null app versions now show as "?.??" instead of an empty string.
+- Fixed filtering, sorting, and ascending toggle; content now displays and saves correctly.
+- Addressed UI freezing and blocking of app closure, enabling smooth sequential actions.
+- Background music no longer restarts when toggling the menu and saves correctly.
+- Content counter now updates correctly after content is updated, even when the app remains open.
+- Fixed issue where cover images failed to load; now correctly displays the default cover.
+- Config on load will no longer cause issues, as it properly adds any missing values to the defaults.
+
+### **Improvements:**
+- Resolved [issue #4](https://github.com/ItsJokerZz/FPKGi/issues/4). Downloading the app within itself will no longer crash and remove <br>
+    itself; now it will open/download and launch LM's HB-Store to update, if needed.
+- Download now include a 20MB limit to avoid false downloading, preventing issues.
+- Long titles in the details UI will now scroll for full visibility instead of being cut off.
+
+### **Additions:**
+- Added check for updates on launch that will install and launch HB-Store, if not already present.
+- When viewing details for the app under the "Homebrew" or "ALL" page, the values will update..
+- Introduced a new default page for displaying all content, which is set for new users inital laucnh
+- Dedicated pages added for themes, emulators, PS1/PS2, and PSP games.
+
+### **Optimizations & More:**
+- Fixed issue where background images and other content failed to load with local URLs, as per <br>
+    [ModdedWarfare's YT video](https://youtu.be/EYrvdpPGjTI?si=iWP-igln-WdBODDI&t=651), you must add "http(s)://" for local connections, or it won’t work.
+- Reduced delays, freezing, and black screens, particularly on first launch, improving overall stability.
+- Adjusted default values for generated content JSONs to reflect the content type more clearly.
+
+</details>
+
+
+<details>
 <summary>[ v0.81-nightly Build: 24 ] from Feb 13th, 2025</summary>
 
 <br>

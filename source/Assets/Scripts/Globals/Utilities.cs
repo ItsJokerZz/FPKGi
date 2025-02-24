@@ -3,17 +3,45 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using static JsonData;
 using static UOBWrapper;
 using static Variables;
+using Random = System.Random;
 
 public class Utilities
 {
     public class UI
     {
+        public static GameObject FindInactiveObjectsByPath(string path)
+        {
+            Transform[] objs = Resources.FindObjectsOfTypeAll<Transform>() as Transform[];
+
+            for (int i = 0; i < objs.Length; i++)
+            {
+                if (objs[i].hideFlags == HideFlags.None)
+                {
+                    Transform current = objs[i];
+                    string fullPath = current.name;
+
+                    while (current.parent != null)
+                    {
+                        current = current.parent;
+                        fullPath = current.name + "/" + fullPath;
+                    }
+
+                    if (fullPath == path)
+                        return objs[i].gameObject;
+                }
+            }
+
+            return null;
+        }
+
         public static Text FindTextComponent(string path)
         {
             GameObject obj = GameObject.Find(path);
@@ -35,13 +63,9 @@ public class Utilities
         {
             try
             {
-                int count = 0;
-
                 foreach (var entry in chunk)
                 {
                     parsedData[entry.Key] = entry.Value;
-
-                    if (Content.PKGs.Count > count && Content.PKGs[count] != null) count++;
                 }
             }
             catch (Exception ex)
@@ -87,11 +111,17 @@ public class Utilities
 
     public class JSON
     {
-        private static int ParseGameData(string jsonContent = "")
+        public static string FindKeyByValue(Dictionary<string, GameContent> dict, string titleId)
+        {
+            return dict.FirstOrDefault(pair => pair.Value.title_id == titleId).Key;
+        }
+
+        private static int ParseGameData(string jsonContent = "", bool preserveExisting = false) // might not need preserve, remove?
         {
             var content = JsonConvert.DeserializeObject<Games>(jsonContent);
 
-            parsedData.Clear();
+            if (!preserveExisting)
+                parsedData.Clear();
 
             const int chunkSize = 25;
             var dataEntries = content.DATA.ToList();
@@ -100,16 +130,55 @@ public class Utilities
             for (int i = 0; i < totalCount; i += chunkSize)
             {
                 var chunk = dataEntries.Skip(i).Take(chunkSize).ToList();
-
                 if (!UI.UpdateUIFromChunk(chunk))
                     return 0;
             }
+
             return 1;
         }
 
-        public static int ParseJSON(ContentType contentType = ContentType.Config)
+        public static async Task<int> ParseJSON(ContentType contentType = ContentType.Config, bool onlyCheckIfFileExists = false)
         {
-            string filePath = IO.GetFilePath(contentType);
+            if (contentType == ContentType.ALL)
+            {
+                parsedData.Clear();
+                var allContentTypes = Enum.GetValues(typeof(ContentType))
+                    .Cast<ContentType>()
+                    .Where(type => type != ContentType.Config && type != ContentType.ALL);
+
+                foreach (var type in allContentTypes)
+                {
+                    string filePath = IO.GetFilePath(type);
+                    if (File.Exists(filePath))
+                    {
+                        try
+                        {
+                            string jsonContent = File.ReadAllText(filePath);
+                            var content = JsonConvert.DeserializeObject<Games>(jsonContent);
+
+                            if (content?.DATA != null)
+                            {
+                                foreach (var entry in content.DATA)
+                                {
+                                    string uniqueKey = $"{type}_{entry.Key}";
+                                    parsedData[uniqueKey] = entry.Value;
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Print($"Error loading {type}: {ex.Message}", PrintType.Error);
+                        }
+                    }
+                    else
+                        await ParseJSON(type, false);
+                }
+                return parsedData.Count > 0 ? 1 : 0;
+            }
+
+            string singleFilePath = IO.GetFilePath(contentType);
+            bool preserveExisting = contentType != 
+                ContentType.Config && contentFilter == (int)ContentType.ALL;
 
             if (populateViaWeb)
             {
@@ -119,8 +188,23 @@ public class Utilities
 
                     switch (contentType)
                     {
+                        case ContentType.PS1:
+                            url = Variables.ContentURLs["ps1"];
+                            break;
+                        case ContentType.PS2:
+                            url = Variables.ContentURLs["ps2"];
+                            break;
+                        case ContentType.PSP:
+                            url = Variables.ContentURLs["psp"];
+                            break;
+                        case ContentType.Games:
+                            url = Variables.ContentURLs["games"];
+                            break;
                         case ContentType.Apps:
                             url = Variables.ContentURLs["apps"];
+                            break;
+                        case ContentType.Updates:
+                            url = Variables.ContentURLs["updates"];
                             break;
                         case ContentType.Demos:
                             url = Variables.ContentURLs["demos"];
@@ -128,21 +212,21 @@ public class Utilities
                         case ContentType.DLC:
                             url = Variables.ContentURLs["dlc"];
                             break;
-                        case ContentType.Games:
-                            url = Variables.ContentURLs["games"];
-                            break;
                         case ContentType.Homebrew:
                             url = Variables.ContentURLs["homebrew"];
                             break;
-                        case ContentType.Updates:
-                            url = Variables.ContentURLs["updates"];
+                        case ContentType.Emulators:
+                            url = Variables.ContentURLs["emulators"];
+                            break;
+                        case ContentType.Themes:
+                            url = Variables.ContentURLs["themes"];
                             break;
                     }
 
-                    if (string.IsNullOrEmpty(url))
-                        throw new Exception("URL is null or empty.");
+                    if (string.IsNullOrEmpty(url) || !onlyCheckIfFileExists)
+                        goto finish;
 
-                    return ParseGameData(DownloadAsBytes(url));
+                    return ParseGameData(await DownloadAsBytes(url), preserveExisting);
                 }
                 catch (Exception ex)
                 {
@@ -151,63 +235,127 @@ public class Utilities
                 }
             }
 
-            if (!File.Exists(filePath))
+        finish:
+            if (!File.Exists(singleFilePath) && contentType != ContentType.ALL)
             {
                 try
                 {
-                    var pkgUrl = DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/?echo=1");
-
+                    var pkgUrl = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/?echo=1");
 
                     if (contentType == ContentType.Homebrew)
                     {
                         var homebrewJson = new
                         {
                             DATA = new Dictionary<string, object>
-                    {
-                        {
-                            pkgUrl, new
                             {
-                                title_id = "FPKGI13337",
-                                region = "ALL",
-                                name = "F[PKGi]",
-                                version = DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/") ?? null,
-                                release = "12-25-2024",
-                                size = DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/") ?? "75000000",
-                                min_fw = "4.50",
-                                cover_url = "https://www.itsjokerzz.site/projects/FPKGi/Icon.png"
+                                {
+                                    pkgUrl, new
+                                    {
+                                        title_id = "PKGI13337",
+                                        region = "ALL",
+                                        name = "F[PKGi]",
+                                        version = version.ToString(),
+                                        release = "12-25-2024",
+                                        size = "75000000",
+                                        min_fw = "4.50",
+                                        cover_url = "https://www.itsjokerzz.site/projects/FPKGi/Icon.png"
+                                    }
+                                }
                             }
-                        }
-                    }
                         };
 
                         string jsonString = JsonConvert.SerializeObject(homebrewJson, Formatting.Indented);
-                        File.WriteAllText(filePath, jsonString);
+                        File.WriteAllText(singleFilePath, jsonString);
                     }
                     else if (contentType != ContentType.Config)
                     {
+                        var random = new Random();
+                        var id = $"{random.Next(0, 10)}{random.Next(0, 10)}{random.Next(0, 10)}{random.Next(0, 10)}{random.Next(0, 10)}";
+
+                        var regions = new[] { "USA", "EUR", "ASIA", "JAP", "UNK" };
+                        var region = regions[random.Next(regions.Length)];
+
+                        var version = $"{random.Next(0, 10)}.{random.Next(0, 10)}{random.Next(0, 10)}";
+
+                        var startDate = new DateTime(2000, 1, 1);
+                        var endDate = new DateTime(2050, 12, 31);
+                        var range = (endDate - startDate).Days;
+                        var randomDate = startDate.AddDays(random.Next(range)).ToString("MM-dd-yyyy");
+
+                        var size = 500000000L + (long)(random.NextDouble() * (50000000000L - 500000000L));
+                        var firmware = $"{random.Next(1, 14)}.{random.Next(0, 100):D2}";
+
+                        string defaultName = string.Empty;
+                        switch (contentType)
+                        {
+                            case ContentType.PS1:
+                                defaultName = "PlayStation Classic";
+                                break;
+                            case ContentType.PS2:
+                                defaultName = "PlayStation 2 Classic";
+                                break;
+                            case ContentType.PSP:
+                                defaultName = "PSP Remaster";
+                                break;
+                            case ContentType.Games:
+                                defaultName = "Game";
+                                break;
+                            case ContentType.Apps:
+                                defaultName = "Application";
+                                break;
+                            case ContentType.Updates:
+                                defaultName = "Update";
+                                break;
+                            case ContentType.DLC:
+                                defaultName = "DLC";
+                                break;
+                            case ContentType.Demos:
+                                defaultName = "Demo";
+                                break;
+                            case ContentType.Emulators:
+                                defaultName = "Emulator";
+                                break;
+                            case ContentType.Themes:
+                                defaultName = "Theme";
+                                break;
+                        }
+
+                        var fileName = defaultName;
+
+                        switch (fileName)
+                        {
+                            case "PSP Remaster": fileName = "psp-remaster"; break;
+                            case "PlayStation Classic": fileName = "ps1-classic"; break;
+                            case "PlayStation 2 Classic": fileName = "ps2-classic"; break;
+                        }
+
+                        var downloadLink = $"https://www.web.site/{fileName.ToLower()}.pkg";
+
                         var defaultJson = new
                         {
-                            DATA = new Dictionary<string, object> { {
-                            "https://www.web.site/content.pkg", new
+                            DATA = new Dictionary<string, object>
                             {
-                                title_id = "CUSA00000",
-                                region = "ALL",
-                                name = "Demo",
-                                version = "1.00",
-                                release = "01-01-9999",
-                                size = 13333333337,
-                                min_fw = "12.00",
-                                cover_url = (string)null
+                                {
+                                    downloadLink, new
+                                    {
+                                        title_id = $"CUSA{id}",
+                                        region,
+                                        name = defaultName,
+                                        version,
+                                        release = randomDate,
+                                        size,
+                                        min_fw = firmware,
+                                        cover_url = (string)null
+                                    }
+                                }
                             }
-                        }
-                    }
                         };
 
                         string jsonString = JsonConvert.SerializeObject(defaultJson, Formatting.Indented);
-                        File.WriteAllText(filePath, jsonString);
+                        File.WriteAllText(singleFilePath, jsonString);
                     }
 
-                    ParseJSON((ContentType)contentFilter);
+                    await ParseJSON((ContentType)contentFilter);
                     return 1;
                 }
                 catch (Exception ex)
@@ -219,18 +367,14 @@ public class Utilities
 
             try
             {
-                string jsonContent = File.ReadAllText(filePath);
-
+                string jsonContent = File.ReadAllText(singleFilePath);
                 if (contentType != ContentType.Config)
-                    return ParseGameData(jsonContent);
+                    return ParseGameData(jsonContent, preserveExisting);
             }
             catch (Exception ex)
             {
                 if (ex.Message.Contains("Object reference not set to an instance of an object"))
                     return 0;
-
-                Print($"Failed to read or parse JSON file: {ex.Message}", PrintType.Error);
-                Print($"Stack Trace:\n{ex.StackTrace}", PrintType.Error);
             }
 
             return 1;
@@ -277,6 +421,12 @@ public class Utilities
             {
                 case ContentType.Config:
                     return Path.Combine(directoryPath, "config.json");
+                case ContentType.PS1:
+                    return Path.Combine(directoryPath, "ContentJSONs", "PS1.json");
+                case ContentType.PS2:
+                    return Path.Combine(directoryPath, "ContentJSONs", "PS2.json");
+                case ContentType.PSP:
+                    return Path.Combine(directoryPath, "ContentJSONs", "PSP.json");
                 case ContentType.Games:
                     return Path.Combine(directoryPath, "ContentJSONs", "GAMES.json");
                 case ContentType.Apps:
@@ -289,6 +439,10 @@ public class Utilities
                     return Path.Combine(directoryPath, "ContentJSONs", "DEMOS.json");
                 case ContentType.Homebrew:
                     return Path.Combine(directoryPath, "ContentJSONs", "HOMEBREW.json");
+                case ContentType.Emulators:
+                    return Path.Combine(directoryPath, "ContentJSONs", "EMULATORS.json");
+                case ContentType.Themes:
+                    return Path.Combine(directoryPath, "ContentJSONs", "THEMES.json");
 
                 default: return string.Empty;
             }
@@ -304,19 +458,29 @@ public class Utilities
 
         public static void EnsureDirectoryExists(string path)
         {
-            if (!Directory.Exists(path))
-                Directory.CreateDirectory(path);
+            if (string.IsNullOrWhiteSpace(path)) return;
+
+            path = Path.GetFullPath(path);
+            if (Directory.Exists(path)) return;
+
+            Stack<string> toCreate = new Stack<string>();
+
+            while (!Directory.Exists(path))
+            {
+                toCreate.Push(path);
+                path = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(path)) break;
+            }
+
+            while (toCreate.Count > 0)
+                Directory.CreateDirectory(toCreate.Pop());
         }
 
         public static void LoadImage(string path, ref RawImage image)
         {
             try
             {
-                if (string.IsNullOrEmpty(path))
-                {
-                    Debug.LogWarning("Path is null or empty.");
-                    return;
-                }
+                if (string.IsNullOrEmpty(path)) return;
 
                 string directoryPath = Path.GetDirectoryName(path);
                 string localFileName = Path.GetFileName(path);
@@ -329,15 +493,8 @@ public class Utilities
                             f => string.Equals(Path.GetFileName(f), localFileName, StringComparison.OrdinalIgnoreCase)
                         );
 
-                    if (matchedFile == null)
-                    {
-                        Debug.LogError($"No file found matching '{localFileName}' in directory '{directoryPath}'.");
-                    }
-
-                    if (background == null)
-                    {
-                        Debug.LogError("Background object is null. Make sure it is assigned correctly.");
-                    }
+                    if (matchedFile == null || background == null)
+                        return;
 
                     if (matchedFile != null && background != null)
                     {
@@ -350,41 +507,41 @@ public class Utilities
 
                             if (texture.LoadImage(imageData))
                             {
-                                Debug.Log("Image loaded successfully.");
-
                                 image.texture = texture;
-
                                 image.gameObject.SetActive(true);
-                            }
-                            else
-                            {
-                                Debug.LogError("Failed to load image into texture.");
                             }
 
                             background_uri = matchedFile;
                         }
-                        else
-                        {
-                            Debug.LogError("Invalid image extension.");
-                        }
                     }
-                }
-                else
-                {
-                    Debug.LogError("Directory does not exist or directoryPath is null.");
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"Exception occurred: {ex.Message}\n{ex.StackTrace}");
+                Print($"Failed to load image: {ex.Message}", PrintType.Error);
             }
         }
     }
 
     public class URL
     {
-        public static bool IsValid(string url) =>
-            Regex.IsMatch(url, @"^(http(s)?:\/\/)?(www\.)?[a-zA-Z0-9\-]+(\.[a-zA-Z]{2,})+");
+        public static bool IsValid(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return false;
+
+            url = Uri.EscapeUriString(url.Trim());
+
+            Uri uri = null;
+
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
+            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
+            {
+                Print($"Invalid URL format: {url}", PrintType.Default);
+                return false;
+            }
+
+            return true;
+        }
 
         public static bool IsValidImageType(string url)
         {
@@ -420,5 +577,28 @@ public class Utilities
             if (IsValidMenuItemIndex(index))
                 menuTexts[index].color = color;
         }
+    }
+
+    public class Store
+    {
+        public enum UpdateReturns
+        {
+            FoundUpdate = 0,
+            ErrorOccured = 1,
+            NoUpdate = 2,
+            NotInstalled = 3
+        }
+
+        [DllImport("store_api")]
+        public static extern UpdateReturns sceStoreApiCheckUpdate(string TitleId);
+
+        [DllImport("store_api")]
+        private static extern bool sceStoreApiLaunchStore(string TitleId);
+
+        public static bool CheckForUpdates(string TitleId = "PKGI13337")
+          => sceStoreApiCheckUpdate(TitleId) == UpdateReturns.FoundUpdate;
+
+        public static void UpdateApplication(string titleId = "PKGI13337")
+            => sceStoreApiLaunchStore(titleId);
     }
 }

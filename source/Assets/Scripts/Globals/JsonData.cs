@@ -5,12 +5,18 @@ using UnityEngine.UI;
 public enum ContentType
 {
     Config = -1,
+    PS1,
+    PS2,
+    PSP,
     Games,
     Apps,
     Updates,
     DLC,
     Demos,
-    Homebrew
+    Homebrew,
+    Emulators,
+    Themes,
+    ALL
 }
 
 public enum SortBy
@@ -67,12 +73,17 @@ public class JsonData
 
     public class ContentURLs
     {
+        public string ps1 { get; set; }
+        public string ps2 { get; set; }
+        public string psp { get; set; }
         public string games { get; set; }
         public string apps { get; set; }
         public string updates { get; set; }
         public string dlc { get; set; }
         public string demos { get; set; }
         public string homebrew { get; set; }
+        public string emulators { get; set; }
+        public string themes { get; set; }
     }
 
     public class GameContent

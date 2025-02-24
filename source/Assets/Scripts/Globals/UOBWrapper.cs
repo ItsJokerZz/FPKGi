@@ -3,10 +3,11 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.UI;
 using UnityOrbisBridge;
-
 using static UOBWrapper.Private;
 
 public static class UOBWrapper
@@ -105,6 +106,7 @@ public static class UOBWrapper
 
     public enum PrintType { Default, Warning, Error }
 
+    // make use logtype and update uob
     public static void Print(string message, PrintType type = PrintType.Default)
     {
         if (string.IsNullOrEmpty(message) ||
@@ -167,12 +169,13 @@ public static class UOBWrapper
             Print("UpdateDiskInfo(Text, UOB.DiskInfo) returned due to \"textObject\" being \"null\".");
     }
 
-    public static string DownloadAsBytes(string url)
+    public static async Task<string> DownloadAsBytes(string url)
     {
         if (Application.platform == RuntimePlatform.PS4)
         {
-            int size;
+            UOB.BreakFromSandbox();
 
+            int size;
             IntPtr ptr = UOB.DownloadAsBytes(url, out size);
             byte[] bytes = new byte[size];
             Marshal.Copy(ptr, bytes, 0, size);
@@ -180,55 +183,121 @@ public static class UOBWrapper
             return Encoding.UTF8.GetString(bytes).Replace("\r", "").Replace("\n", "");
         }
 
-        return null;
+        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        {
+            var operation = request.SendWebRequest();
+            while (!operation.isDone)
+                await Task.Yield();
+
+            if (request.isNetworkError || request.isHttpError)
+            {
+                Print($"Failed to download from {url}:\n" +
+                      $"Error: {request.error}", PrintType.Error);
+                return null;
+            }
+
+            if (request.downloadHandler.data == null || request.downloadHandler.data.Length == 0)
+            {
+                Print("Download returned empty response", PrintType.Error);
+                return null;
+            }
+
+            return Encoding.UTF8.GetString(request.downloadHandler.data).Replace("\r", "").Replace("\n", "");
+        }
     }
 
     public static bool SetImageFromURL(string url, ref RawImage image)
     {
-        if (Application.platform != RuntimePlatform.PS4) return false;
+        if (string.IsNullOrWhiteSpace(url)) return false;
 
-        if (!Regex.IsMatch(url, @"^(http(s)?:\/\/)?(www\.)?[a-zA-Z0-9\-]+(\.[a-zA-Z]{2,})+"))
+        url = Uri.EscapeUriString(url.Trim());
+        Uri uri;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
+            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
             Print($"Invalid URL format: {url}", PrintType.Default);
             return false;
         }
 
-        int size;
-        IntPtr dataPtr = UOB.DownloadAsBytes(url, out size);
+        byte[] imageBytes = null;
 
-        if (dataPtr == IntPtr.Zero || size <= 1256)
+        if (Application.platform == RuntimePlatform.PS4)
         {
-            image.gameObject.SetActive(false);
+            int size;
+            IntPtr dataPtr = UOB.DownloadAsBytes(url, out size);
 
-            Print("Failed to download image or invalid pointer/size.", PrintType.Error);
+            if (dataPtr == IntPtr.Zero || size <= 1256)
+            {
+                Print("Failed to download image or invalid pointer/size.", PrintType.Error);
+                image.gameObject.SetActive(false);
+                return false;
+            }
+
+            imageBytes = new byte[size];
+            Marshal.Copy(dataPtr, imageBytes, 0, size);
+        }
+        else
+        {
+            try
+            {
+                UnityWebRequest request = UnityWebRequest.Get(url);
+                request.SendWebRequest();
+
+                while (!request.isDone) { }
+
+                if (request.isNetworkError || request.isHttpError)
+                {
+                    image.gameObject.SetActive(false);
+                    Print($"Failed to download image: {request.error}", PrintType.Error);
+                    return false;
+                }
+
+                imageBytes = request.downloadHandler.data;
+            }
+            catch (Exception ex)
+            {
+                Print($"Failed to download image from {url}:\nError Type: {ex.GetType().Name}\nMessage: {ex.Message}", PrintType.Error);
+                image.gameObject.SetActive(false);
+                return false;
+            }
+        }
+
+        if (imageBytes == null || imageBytes.Length == 0)
+        {
+            Print("Downloaded image bytes are invalid.", PrintType.Error);
+            image.gameObject.SetActive(false);
             return false;
         }
 
-        byte[] imageBytes = new byte[size];
-        Marshal.Copy(dataPtr, imageBytes, 0, size);
-
-        if (imageBytes.Length == 0)
+        if (imageBytes.Length < 2 ||
+            !(imageBytes[0] == 0xFF
+            && imageBytes[1] == 0xD8) &&  // JPEG/JPG
+            !(imageBytes.Length >= 4 
+            && imageBytes[0] == 0x89 && 
+            imageBytes[1] == 0x50 
+            && imageBytes[2] == 0x4E 
+            && imageBytes[3] == 0x47) &&  // PNG
+            !(imageBytes[0] == 0x42 
+            && imageBytes[1] == 0x4D))  // BMP
         {
+            Print("Downloaded image is not a valid image.", PrintType.Error);
             image.gameObject.SetActive(false);
-
-            Print("Downloaded image bytes are invalid.", PrintType.Error);
             return false;
         }
 
         Texture2D texture = new Texture2D(2, 2);
 
-        if (texture.LoadImage(imageBytes))
+        if (!texture.LoadImage(imageBytes) || texture.width == 0 || texture.height == 0 ||
+            texture == Texture2D.whiteTexture || texture == Texture2D.blackTexture)
         {
-            image.texture = texture;
-            image.gameObject.SetActive(true);
-            return true;
-        }
-        else
-        {
+            Print("Failed to load image from bytes or is invalid.", PrintType.Error);
             image.gameObject.SetActive(false);
-
-            Print("Failed to load image from bytes.", PrintType.Error);
             return false;
         }
+
+        image.texture = texture;
+        image.gameObject.SetActive(true);
+        return true;
     }
+
 }

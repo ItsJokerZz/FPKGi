@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using System.Collections;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -13,164 +14,64 @@ public class Background : MonoBehaviour
 {
     [SerializeField]
     private RawImage
-        background,
-        coverImage;
+        background, coverImage;
 
     [SerializeField]
     private Text[]
-      mainTexts = { };
-
-    [Header("Content Data")]
-    public RectTransform
-        textTransform;
-
-    public GameObject prefab;
-
-    [SerializeField]
-    private JsonData Content;
+        mainTexts = { };
 
     public Text freeSpace;
 
-    private const float Spacing = 36.50f;
+    [Header("Content Data")]
+    public RectTransform textTransform;
+
+    public GameObject prefab;
+
+    [SerializeField] private JsonData Content;
+
+    private const float Spacing = 37.50f;
     private const float Offset = -20.00f;
 
-    private AudioSource audioSource;
-
-    #region Unity Methods
     private void OnApplicationQuit()
         => SaveConfiguration();
-
-    private void Start()
-    {
-        mainTexts = new Text[BackgroundTextObjects.Length];
-
-        for (int i = 0; i < mainTexts.Length; i++)
-            mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
-
-        Variables.mainTexts = mainTexts;
-
-        var state = nightly ? "nightly" : "release";
-        var ver = $"v{version:0.00}-{state} [build {build:000}]";
-        UI.ChangeText(mainTexts, 0, ver);
-
-        Variables.background = background; // might not be needed?
-       
-        SetVariables();
-        CreatePrefabs();
-
-        InitializeContent();
-        SetupDirectories();
-
-        HandleConfiguration();
-        LoadCustomBackground();
-    }
-
-    private void Update()
-    {
-        for (int i = 0; i < mainTexts.Length; i++) if (mainTexts.Length != i)
-                mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
-
-        UpdateDiskInfo(freeSpace, UOB.DiskInfo.Free);
-        UpdateTemperature(mainTexts[1],
-            new Color32(119, 221, 119, 255),
-            new Color32(255, 237, 0, 255),
-            new Color32(156, 82, 82, 255),
-            UOB.Temperature.CPU, 55f, 70f);
-    }
-    #endregion
-
-    #region Setup Methods
-    private void SetVariables()
-    {
-        Variables.coverImage = coverImage;
-
-        if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-            InitializeForPS4();
-        else if (UnityEngine.Application.platform == RuntimePlatform.WindowsEditor)
-        {
-            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
-
-            QualitySettings.vSyncCount = 0;
-        }
-    }
-
-    private void InitializeForPS4()
-    {
-        QualitySettings.vSyncCount = 1;
-        UnityEngine.Application.targetFrameRate = 60;
-
-        // language = Marshal.PtrToStringAnsi(UOB.GetSystemLanguage());
-
-        languageID = UOB.GetSystemLanguageID();
-
-        UOB.BreakFromSandbox();
-
-        // UOB.MountRootDirectories();
-    }
-
-    private void SetupDirectories()
-    {
-        IO.EnsureDirectoryExists(directoryPath);
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
-    }
-    #endregion
-
-    #region Prefab Management
-    private void CreatePrefabs()
-    {
-        float totalHeight = ContentHandler.itemsPerPage * Spacing;
-        Vector2 startPosition = new Vector2(0, totalHeight / 2);
-
-        for (int i = 0; i < ContentHandler.itemsPerPage; i++)
-        {
-            Vector2 position = startPosition - new Vector2(0, i * Spacing - Offset);
-            GameObject newPrefab = Instantiate(prefab, textTransform);
-            RectTransform rectTransform = newPrefab.GetComponent<RectTransform>();
-            rectTransform.anchoredPosition = position;
-            newPrefab.name = $"PKG{i + 1}";
-        }
-    }
 
     private void InitializeContent()
     {
         Variables.Content = Content;
-
         Transform pkgsTransform = GameObject.Find("PKGs")?.transform;
 
-        if (pkgsTransform == null) return;
-
-        Transform textTransform = pkgsTransform.Find("Text");
-
-        if (textTransform == null) return;
-
-        Content.PKGs.Clear();
-
-        for (int i = 1; i <= ContentHandler.itemsPerPage; i++)
-            AddPkgToContent(textTransform, i);
-    }
-
-    private void AddPkgToContent(Transform textTransform, int index)
-    {
-        Transform pkgTransform = textTransform.Find($"PKG{index}");
-
-        if (pkgTransform != null)
+        if (pkgsTransform != null)
         {
-            PKG newPkg = new PKG
+            Transform textTransform = pkgsTransform.Find("Text");
+            if (textTransform != null)
             {
-                TitleID = pkgTransform.Find("TitleID")?.GetComponent<Text>(),
-                Region = pkgTransform.Find("Region")?.GetComponent<Text>(),
-                Downloaded = pkgTransform.Find("Downloaded")?.GetComponent<Text>(),
-                Title = pkgTransform.Find("Title")?.GetComponent<Text>(),
-                Size = pkgTransform.Find("Size")?.GetComponent<Text>()
-            };
-            Content.PKGs.Add(newPkg);
+                Content.PKGs.Clear();
+                Vector2 startPosition = new Vector2(0, ContentHandler.itemsPerPage * Spacing / 2);
+
+                for (int i = 0; i < ContentHandler.itemsPerPage; i++)
+                {
+                    Vector2 position = startPosition - new Vector2(0, i * Spacing - Offset);
+                    GameObject newPrefab = Instantiate(prefab, textTransform);
+                    newPrefab.GetComponent<RectTransform>().anchoredPosition = position;
+                    newPrefab.name = $"PKG{i + 1}";
+
+                    Transform pkgTransform = textTransform.Find($"PKG{i + 1}");
+                    if (pkgTransform != null)
+                    {
+                        Content.PKGs.Add(new PKG
+                        {
+                            TitleID = pkgTransform.Find("TitleID")?.GetComponent<Text>(),
+                            Region = pkgTransform.Find("Region")?.GetComponent<Text>(),
+                            Downloaded = pkgTransform.Find("Downloaded")?.GetComponent<Text>(),
+                            Title = pkgTransform.Find("Title")?.GetComponent<Text>(),
+                            Size = pkgTransform.Find("Size")?.GetComponent<Text>()
+                        });
+                    }
+                }
+            }
         }
     }
-    #endregion
 
-    #region Configuration Management
     public static void SaveConfiguration()
     {
         if (downloadPath.StartsWith("/data/") && !downloadPath.StartsWith("/user/"))
@@ -179,24 +80,61 @@ public class Background : MonoBehaviour
         if (!downloadPath.EndsWith("/")) downloadPath += "/";
 
         string _sortCriteria = null;
-        string _contentFilter = null;
-
         switch (sortCriteria)
         {
-            case 0: _sortCriteria = "size"; break;
-            case 1: _sortCriteria = "region"; break;
-            case 2: _sortCriteria = "name"; break;
-            case 3: _sortCriteria = "titleID"; break;
+            case 0:
+                _sortCriteria = "size";
+                break;
+            case 1:
+                _sortCriteria = "region";
+                break;
+            case 2:
+                _sortCriteria = "name";
+                break;
+            case 3:
+                _sortCriteria = "titleID";
+                break;
         }
 
+        string _contentFilter = null;
         switch (contentFilter)
         {
-            case 0: _contentFilter = "games"; break;
-            case 1: _contentFilter = "apps"; break;
-            case 2: _contentFilter = "updates"; break;
-            case 3: _contentFilter = "dlc"; break;
-            case 4: _contentFilter = "demos"; break;
-            case 5: _contentFilter = "homebrew"; break;
+            case (int)ContentType.PS1:
+                _contentFilter = "ps1";
+                break;
+            case (int)ContentType.PS2:
+                _contentFilter = "ps2";
+                break;
+            case (int)ContentType.PSP:
+                _contentFilter = "psp";
+                break;
+            case (int)ContentType.Games:
+                _contentFilter = "games";
+                break;
+            case (int)ContentType.Apps:
+                _contentFilter = "apps";
+                break;
+            case (int)ContentType.Updates:
+                _contentFilter = "updates";
+                break;
+            case (int)ContentType.DLC:
+                _contentFilter = "dlc";
+                break;
+            case (int)ContentType.Demos:
+                _contentFilter = "demos";
+                break;
+            case (int)ContentType.Homebrew:
+                _contentFilter = "homebrew";
+                break;
+            case (int)ContentType.Emulators:
+                _contentFilter = "emulators";
+                break;
+            case (int)ContentType.Themes:
+                _contentFilter = "themes";
+                break;
+            case (int)ContentType.ALL:
+                _contentFilter = "all";
+                break;
         }
 
         var configJSON = new
@@ -209,9 +147,8 @@ public class Background : MonoBehaviour
                     type = _sortCriteria,
                     ascending
                 },
-                REGIONS = filteredRegions,
+                REGIONS = filteredRegions?.Distinct().ToArray() ?? new string[0],
             },
-
             PREFERENCES = new
             {
                 DOWNLOADS = new
@@ -221,32 +158,40 @@ public class Background : MonoBehaviour
                     installAfter,
                     deleteAfter,
                 },
-
                 APPLICATION = new
                 {
                     background_uri,
                     backgroundMusic,
                     populateViaWeb,
                 },
-
                 CONTENT_URLS = new
                 {
+                    PS1 = Variables.ContentURLs["ps1"],
+                    PS2 = Variables.ContentURLs["ps2"],
+                    PSP = Variables.ContentURLs["psp"],
                     games = Variables.ContentURLs["games"],
                     apps = Variables.ContentURLs["apps"],
                     updates = Variables.ContentURLs["updates"],
                     DLC = Variables.ContentURLs["dlc"],
                     demos = Variables.ContentURLs["demos"],
-                    homebrew = Variables.ContentURLs["homebrew"]
+                    homebrew = Variables.ContentURLs["homebrew"],
+                    emulators = Variables.ContentURLs["emulators"],
+                    themes = Variables.ContentURLs["themes"]
                 }
             }
         };
 
+        Variables.ContentURLs["ps1"] = configJSON.PREFERENCES.CONTENT_URLS.PS1 ?? Variables.ContentURLs["ps1"];
+        Variables.ContentURLs["ps2"] = configJSON.PREFERENCES.CONTENT_URLS.PS2 ?? Variables.ContentURLs["ps2"];
+        Variables.ContentURLs["psp"] = configJSON.PREFERENCES.CONTENT_URLS.PSP ?? Variables.ContentURLs["psp"];
         Variables.ContentURLs["games"] = configJSON.PREFERENCES.CONTENT_URLS.games ?? Variables.ContentURLs["games"];
         Variables.ContentURLs["apps"] = configJSON.PREFERENCES.CONTENT_URLS.apps ?? Variables.ContentURLs["apps"];
         Variables.ContentURLs["updates"] = configJSON.PREFERENCES.CONTENT_URLS.updates ?? Variables.ContentURLs["updates"];
         Variables.ContentURLs["dlc"] = configJSON.PREFERENCES.CONTENT_URLS.DLC ?? Variables.ContentURLs["dlc"];
         Variables.ContentURLs["demos"] = configJSON.PREFERENCES.CONTENT_URLS.demos ?? Variables.ContentURLs["demos"];
         Variables.ContentURLs["homebrew"] = configJSON.PREFERENCES.CONTENT_URLS.homebrew ?? Variables.ContentURLs["homebrew"];
+        Variables.ContentURLs["emulators"] = configJSON.PREFERENCES.CONTENT_URLS.emulators ?? Variables.ContentURLs["emulators"];
+        Variables.ContentURLs["themes"] = configJSON.PREFERENCES.CONTENT_URLS.themes ?? Variables.ContentURLs["themes"];
 
         foreach (var key in Variables.ContentURLs.Keys.ToList())
         {
@@ -258,71 +203,236 @@ public class Background : MonoBehaviour
         string configPath = Path.Combine(directoryPath, "config.json");
 
         File.WriteAllText(configPath, jsonString);
-
     }
 
-    private void HandleConfiguration()
+    public async void HandleConfiguration()
     {
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
+
         string configPath = Path.Combine(directoryPath, "config.json");
 
         if (!File.Exists(configPath))
         {
             Print("CONFIG DOESN'T EXIST! CREATING...", PrintType.Warning);
-            JSON.ParseJSON(ContentType.Config);
+            await JSON.ParseJSON(ContentType.Config);
             SaveConfiguration();
             return;
         }
 
+        #region Resolves issues present in versions prior to v0.81
+        string homebrewPath = IO.GetFilePath(ContentType.Homebrew);
+        if (File.Exists(homebrewPath))
+        {
+            string homebrewJson = File.ReadAllText(homebrewPath);
+            var content = JsonConvert.DeserializeObject<Games>(homebrewJson);
+            var fpkgiEntry = content.DATA.FirstOrDefault(entry => entry.Value.title_id == "FPKGI13337");
+            if (fpkgiEntry.Value != null)
+            {
+                var oldKey = fpkgiEntry.Key;
+                var gameContent = fpkgiEntry.Value;
+                gameContent.title_id = "PKGI13337";
+
+                content.DATA.Remove(oldKey);
+                content.DATA[oldKey] = gameContent;
+
+                string updatedJson = JsonConvert.SerializeObject(content, Formatting.Indented);
+                File.WriteAllText(homebrewPath, updatedJson);
+            }
+        }
+
         string jsonContent = File.ReadAllText(configPath);
         var config = JsonConvert.DeserializeObject<Config>(jsonContent);
-
-        switch (config.filtering.content.ToLower())
-        {
-            case "games": contentFilter = 0; break;
-            case "apps": contentFilter = 1; break;
-            case "updates": contentFilter = 2; break;
-            case "dlc": contentFilter = 3; break;
-            case "demos": contentFilter = 4; break;
-            case "homebrew": contentFilter = 5; break;
-        }
-
-        switch (config.filtering.sort.type.ToLower())
-        {
-            case "size": sortCriteria = 0; break;
-            case "region": sortCriteria = 1; break;
-            case "name": sortCriteria = 2; break;
-            case "titleID": sortCriteria = 3; break;
-        }
-
-        ascending = config.filtering.sort.ascending;
-        filteredRegions = config.filtering.regions.Distinct().ToArray();
-
-        directDownload = config.preferences.downloads.directDownload;
-        downloadPath = config.preferences.downloads.downloadPath;
-        installAfter = config.preferences.downloads.installAfter;
-        deleteAfter = config.preferences.downloads.deleteAfter;
-
-        background_uri = config.preferences.application.background_uri;
-        backgroundMusic = config.preferences.application.backgroundMusic;
-        populateViaWeb = config.preferences.application.populateViaWeb;
-
-        Variables.ContentURLs["games"] = config.preferences.content_urls.games ?? Variables.ContentURLs["games"];
-        Variables.ContentURLs["apps"] = config.preferences.content_urls.apps ?? Variables.ContentURLs["apps"];
-        Variables.ContentURLs["updates"] = config.preferences.content_urls.updates ?? Variables.ContentURLs["updates"];
-        Variables.ContentURLs["dlc"] = config.preferences.content_urls.dlc ?? Variables.ContentURLs["dlc"];
-        Variables.ContentURLs["demos"] = config.preferences.content_urls.demos ?? Variables.ContentURLs["demos"];
-        Variables.ContentURLs["homebrew"] = config.preferences.content_urls.homebrew ?? Variables.ContentURLs["homebrew"];
-
-        JSON.ParseJSON((ContentType)contentFilter);
+        #endregion
 
         SaveConfiguration();
-    }
 
-    public void LoadCustomBackground()
-    {
+        await JSON.ParseJSON((ContentType)contentFilter);
+        ContentHandler.UpdateContent(0);
+
+        string contentFilterStr = config.filtering.content?.ToLower();
+        if (!string.IsNullOrEmpty(contentFilterStr))
+        {
+            switch (contentFilterStr)
+            {
+                case "ps1":
+                    contentFilter = (int)ContentType.PS1;
+                    break;
+                case "ps2":
+                    contentFilter = (int)ContentType.PS2;
+                    break;
+                case "psp":
+                    contentFilter = (int)ContentType.PSP;
+                    break;
+                case "games":
+                    contentFilter = (int)ContentType.Games;
+                    break;
+                case "apps":
+                    contentFilter = (int)ContentType.Apps;
+                    break;
+                case "updates":
+                    contentFilter = (int)ContentType.Updates;
+                    break;
+                case "dlc":
+                    contentFilter = (int)ContentType.DLC;
+                    break;
+                case "demos":
+                    contentFilter = (int)ContentType.Demos;
+                    break;
+                case "homebrew":
+                    contentFilter = (int)ContentType.Homebrew;
+                    break;
+                case "emulators":
+                    contentFilter = (int)ContentType.Emulators;
+                    break;
+                case "themes":
+                    contentFilter = (int)ContentType.Themes;
+                    break;
+                case "all":
+                    contentFilter = (int)ContentType.ALL;
+                    break;
+            }
+        }
+
+        string sortType = config.filtering.sort?.type?.ToLower();
+        if (!string.IsNullOrEmpty(sortType))
+        {
+            switch (sortType)
+            {
+                case "size":
+                    sortCriteria = 0;
+                    break;
+                case "region":
+                    sortCriteria = 1;
+                    break;
+                case "name":
+                    sortCriteria = 2;
+                    break;
+                case "titleid":
+                    sortCriteria = 3;
+                    break;
+            }
+        }
+
+        ascending = config.filtering.sort?.ascending ?? ascending;
+        filteredRegions = config.filtering.regions?.Distinct().ToArray() ?? filteredRegions;
+
+        directDownload = config.preferences.downloads?.directDownload ?? directDownload;
+        downloadPath = config.preferences.downloads?.downloadPath ?? downloadPath;
+        installAfter = config.preferences.downloads?.installAfter ?? installAfter;
+        deleteAfter = config.preferences.downloads?.deleteAfter ?? deleteAfter;
+
+        background_uri = config.preferences.application?.background_uri ?? background_uri;
+        backgroundMusic = config.preferences.application?.backgroundMusic ?? backgroundMusic;
+        populateViaWeb = config.preferences.application?.populateViaWeb ?? populateViaWeb;
+
+        if (config.preferences.content_urls != null)
+        {
+            Variables.ContentURLs["ps1"] = config.preferences.content_urls.ps1 ?? Variables.ContentURLs["ps1"];
+            Variables.ContentURLs["ps2"] = config.preferences.content_urls.ps2 ?? Variables.ContentURLs["ps2"];
+            Variables.ContentURLs["psp"] = config.preferences.content_urls.psp ?? Variables.ContentURLs["psp"];
+            Variables.ContentURLs["games"] = config.preferences.content_urls.games ?? Variables.ContentURLs["games"];
+            Variables.ContentURLs["apps"] = config.preferences.content_urls.apps ?? Variables.ContentURLs["apps"];
+            Variables.ContentURLs["updates"] = config.preferences.content_urls.updates ?? Variables.ContentURLs["updates"];
+            Variables.ContentURLs["dlc"] = config.preferences.content_urls.dlc ?? Variables.ContentURLs["dlc"];
+            Variables.ContentURLs["demos"] = config.preferences.content_urls.demos ?? Variables.ContentURLs["demos"];
+            Variables.ContentURLs["homebrew"] = config.preferences.content_urls.homebrew ?? Variables.ContentURLs["homebrew"];
+            Variables.ContentURLs["emulators"] = config.preferences.content_urls.emulators ?? Variables.ContentURLs["emulators"];
+            Variables.ContentURLs["themes"] = config.preferences.content_urls.themes ?? Variables.ContentURLs["themes"];
+        }
+
         if (URL.IsValidImage(background_uri))
             SetImageFromURL(background_uri, ref background);
-        else IO.LoadImage(background_uri, ref background);
+        else
+            IO.LoadImage(background_uri, ref background);
     }
-    #endregion
+
+    public static async void CheckForUpdates()
+    {
+        if (updateAvailable == null && latestVersion == null)
+        {
+            float found;
+
+            updateAvailable = UnityEngine.Application.platform != RuntimePlatform.PS4 || Store.CheckForUpdates();
+            string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
+
+            if (float.TryParse(result, out found))
+                latestVersion = found;
+        }
+
+        if (version != latestVersion || updateAvailable == true)
+        {
+            UI.FindInactiveObjectsByPath("Canvas/Details")?.SetActive(false);
+            GameObject.Find("Canvas/Main/Images/Controls/Details")?.SetActive(false);
+            GameObject.Find("Canvas/Main/Images/Controls/Main")?.SetActive(false);
+            GameObject.Find("Canvas/Main/Images/Controls/Close")?.SetActive(true);
+            UI.FindInactiveObjectsByPath("Canvas/Update")?.SetActive(true);
+
+            var textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
+            if (textComponent != null)
+                textComponent.text = $"Latest Version: {latestVersion}\nCurrent Version: {version}";
+        }
+    }
+
+    private IEnumerator UpdateDisplayInfo()
+    {
+        while (UnityEngine.Application.platform == RuntimePlatform.PS4)
+        {
+            UOB.BreakFromSandbox();
+
+            for (int i = 0; i < mainTexts.Length; i++)
+                if (mainTexts.Length != i)
+                    mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
+
+            UpdateDiskInfo(freeSpace, UOB.DiskInfo.Free);
+            UpdateTemperature(mainTexts[1],
+                new Color32(119, 221, 119, 255),
+                new Color32(255, 237, 0, 255),
+                new Color32(156, 82, 82, 255),
+                UOB.Temperature.CPU, 55f, 70f);
+
+            yield return new WaitForSeconds(1f);
+        }
+    }
+
+    private void InitializeApplication()
+    {
+        var state = nightly ? "nightly" : "release";
+
+        mainTexts = new Text[BackgroundTextObjects.Length];
+        for (int i = 0; i < mainTexts.Length; i++)
+            mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
+
+        Variables.mainTexts = mainTexts;
+        Variables.background = background;
+        Variables.coverImage = coverImage;
+
+        if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+        {
+            QualitySettings.vSyncCount = 1;
+            UnityEngine.Application.targetFrameRate = 60;
+            // language = Marshal.PtrToStringAnsi(UOB.GetSystemLanguage());
+            languageID = UOB.GetSystemLanguageID();
+            UOB.InitializeNativeDialogs();
+        }
+        else if (UnityEngine.Application.platform == RuntimePlatform.WindowsEditor)
+        {
+            QualitySettings.vSyncCount = 0;
+            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
+        }
+
+        UI.ChangeText(mainTexts, 0, $"v{version:0.00}-{state} [build {build:000}]");
+
+        InitializeContent();
+        HandleConfiguration();
+
+        CheckForUpdates();
+
+        StartCoroutine(UpdateDisplayInfo());
+    }
+
+    private void Start()
+       => InitializeApplication();
+
 }

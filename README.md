@@ -1,14 +1,15 @@
-# FPKGi - A Server Populated PS4 Content Downloader
+# FPKGi <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/itsjokerzz/fpkgi"> - A Server-Based PS4 Content Installer
 
-> [!NOTE]
-> FPKGi stands for Fake PKG and references modified .pkg files for backported PS4 games. The project is a clone of the original [PKGi](https://www.github.com/bucanero/pkgi-ps3).
-> This lets you populate the app with your own content via `.json` files locally or from the web, and download from your own servers.
-> It supports any `.pkg `content, provided you have the necessary licenses. If you're using older FW with backported games, you're all set!
-> This tool is for educational and personal use only. Its open-sourced and community-driven, committed to game preservation for the PS4 homebrew community,
-> giving everybody the quick and easy way to view and download and quickly install their offloaded content.
+> [!NOTE]  
+> **FPKGi (Fake PKG Installer)** is a tool for installing modified `.pkg` files on the PS4, inspired by the original [PKGi](https://www.github.com/bucanero/pkgi-ps3) for PS3. It allows you to manage and install your own content using `.json` files, either locally over your network or from the web, and download packages from your private server. Fully compatible with "fake" `.pkg` content, this open-source, community-driven project is designed for educational and personal use. It supports game preservation in the PS4 homebrew scene by providing a seamless way to browse, download, and install content efficiently. A recommended setup is offloading to a NAS, running a web server with Node.js or Python, and using direct URLs for downloads. Use responsibly with your own content and servers—avoid third-party sources.
 
 ## Setup Instructions
-Download the latest pre-compiled [`.pkg`](https://github.com/ItsJokerZz/FPKGi/releases) or build it yourself as per, [how to build](#how-to-build), and install it on your console.
+#### Download the Latest Version:
+   - Get the latest compiled package from the [Releases](https://github.com/ItsJokerZz/FPKGi/releases) or visit [pkg-zone.com](https://pkg-zone.com/details/FPKGI13337).
+
+#### Install the Package:
+   - Choose your preferred method to install the package on your console.
+   - Alternatively, you can install directly from LightningMods' [Homebrew Store](https://github.com/LightningMods/PS4-Store).
 
 ### Populate Content
 Launch the application to automatically create the necessary directories and `.json` files in the `/data/FPKGi/` folder.
@@ -18,10 +19,9 @@ Edit the `.json` files generated at `/data/FPKGi/ContentJSONs/` to add your cont
 **You can also generate / populate, and save the necessary `.json` file [here](https://www.itsjokerzz.site/projects/FPKGi/gen/) on my site.**
 
 > [!NOTE]
-> Use bytes for `"size"` and `"release"` must be in the format: `"MM-DD-YYYY"`.<br>
-> Region codes for specifying content regions: `"USA"`, `"JAP"`, `"EUR"`, `"ASIA"`, or `"UNK"`. <br>
+> Use bytes for `"size"` and for specifying content's region: `"USA"`, `"JAP"`, `"EUR"`, `"ASIA"`, or `null`.
 
-Example `.json` structure:
+### Example `.json` structure:
 ```json
 {
     "DATA": {
@@ -30,7 +30,7 @@ Example `.json` structure:
             "name": "Content Title",
             "version": "1.00",
             "release": "11-15-2014",
-            "size": "1000000000",
+            "size": 1000000000,
             "min_fw": null,
             "cover_url": "https://www.example.com/cover.png"
         }
@@ -39,29 +39,35 @@ Example `.json` structure:
 ```
 
 > [!IMPORTANT]  
-> URLs must be direct links to `.pkg` files. Indirect links may cause issues and `"size"` is **REQUIRED!**<br>
-> `"region"`, `"release"`,`"min_fw"`, and the `"cover_url"` are all able to be left `null` where needed.
+> URLs must be direct links to `.pkg` files. Indirect links may cause issues, and the `"size"` attribute is **REQUIRED!**<br>
+> Please ensure the size is as accurate as possible to prevent issues with downloading! The following fields can be <br> left as `null`
+where applicable: `"version"`, `"region"`, `"release"`, `"min_fw"`, and `"cover_url"` if you decide.
 
 #### Populate Content Via Web
-To enable web population, edit the `config.json` file located at `/data/FPKGi`.
+To enable web population, edit the `config.json` file located at `/data/FPKGi` and enable it in the menu.
 
-Locate and edit the following section:
+### Locate and edit the following section:
 ```json
-"CONTENT_URLS": {
-   "games": null,
-   "apps": null,
-   "updates": null,
-   "DLC": null,
-   "demos": null,
-   "homebrew": null
-}
+    "CONTENT_URLS": {
+      "PS1": null,
+      "PS2": null,
+      "PSP": null,
+      "games": null,
+      "apps": null,
+      "updates": null,
+      "DLC": null,
+      "demos": null,
+      "homebrew": null,
+      "emulators": null,
+      "themes": null
+    }
 ```
 
-Replace `null` with URLs pointing to `.json` files containing your content:
+#### Replace `null` with URLs pointing to `.json` files containing your content:
 ```json
-"CONTENT_URLS": {
-   "games": "https://www.example.com/GAMES.json"
-}
+    "CONTENT_URLS": {
+      "games": "https://www.example.com/GAMES.json"
+    }
 ```
 
 Unspecified fields will default to loading content from local `.json` files.
@@ -129,7 +135,6 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
     ```
     
 ## How to Build
-
 <details>
   <summary><strong>Prerequisites</strong></summary>
   <ul>
@@ -143,6 +148,7 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
     <summary><strong>Included Precompiled Dependencies</strong></summary>
     <ul>
       <li><a href="https://www.github.com/SaladLab/Json.Net.Unity3D" target="_blank">Json.Net.Unity3D</a></li>
+      <li><a href="https://www.github.com/ItsJokerZz/store-api" target="_blank">HB Store's API</a></li>
       <li><a href="https://www.github.com/ItsJokerZz/UnityOrbisBridge" target="_blank">UnityOrbisBridge</a></li>
       <li><a href="https://www.github.com/ItsJokerZz/UOBWrapper" target="_blank">UOBWrapper</a></li>
     </ul>
@@ -150,7 +156,6 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
 </details>
 
 ### Steps to Build
-
 1. **Ensure Prerequisites are Set Up:**
    - Install **Unity Hub** and **Unity 2017.2.0p1** (or a compatible version).
    - Set up the **PS4 SDK 4.50+** with the matching Unity integration.

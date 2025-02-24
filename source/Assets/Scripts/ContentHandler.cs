@@ -74,58 +74,131 @@ public class ContentHandler : MonoBehaviour
             return itemsList;
         }
 
-        private static List<KeyValuePair<string, GameContent>> FilterByRegion(List<KeyValuePair<string, GameContent>> itemsList)
+        public static List<KeyValuePair<string, GameContent>> FilterByRegion(List<KeyValuePair<string, GameContent>> itemsList)
         {
-            if (!filteredRegions.Contains("Asia"))
-                itemsList = itemsList.Where(item => !item.Value.region.Equals("ASIA", StringComparison.OrdinalIgnoreCase)).ToList();
+            if (filteredRegions.Count() == 0)
+            {
+                return itemsList.Where(item =>
+                {
+                    string region = item.Value.region?.ToUpper() ?? "";
+                    return region == "ALL" || region == "???" || region == "UNK" ||
+                           string.IsNullOrEmpty(region);
+                }).ToList();
+            }
 
-            if (!filteredRegions.Contains("Europe"))
-                itemsList = itemsList.Where(item => !item.Value.region.Equals("EUR", StringComparison.OrdinalIgnoreCase)).ToList();
+            return itemsList.Where(item =>
+            {
+                string region = item.Value.region?.ToUpper() ?? "";
 
-            if (!filteredRegions.Contains("Japan"))
-                itemsList = itemsList.Where(item => !item.Value.region.Equals("JAP", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            if (!filteredRegions.Contains("USA"))
-                itemsList = itemsList.Where(item => !item.Value.region.Equals("USA", StringComparison.OrdinalIgnoreCase)).ToList();
-
-            return itemsList;
+                return (filteredRegions.Contains("Asia") && region == "ASIA") ||
+                       (filteredRegions.Contains("Europe") && region == "EUR") ||
+                       (filteredRegions.Contains("Japan") && region == "JAP") ||
+                       (filteredRegions.Contains("USA") && region == "USA") ||
+                       region == "ALL" || region == "???" || region == "UNK" ||
+                       string.IsNullOrEmpty(region);
+            }).ToList();
         }
 
         public static IEnumerable<KeyValuePair<string, GameContent>> SortItems(IEnumerable<KeyValuePair<string, GameContent>> itemsList)
         {
-            return itemsList
-                .OrderBy(item =>
-                {
-                    string region = item.Value.region?.ToUpperInvariant() ?? "???";
-                    switch (region)
-                    {
-                        case "ALL": return 0;
-                        case "ASIA": return 1;
-                        case "EUR": return 2;
-                        case "JAP": return 3;
-                        case "USA": return 4;
-                        case "???":
-                        default:
-                            return int.MaxValue;
-                    }
-                })
-                .ThenBy(item =>
-                {
-                    switch (sortCriteria)
-                    {
-                        case 0:
-                            long size;
-                            return (IComparable)(long.TryParse(item.Value.size, out size) ? size : long.MaxValue);
-                        case 1:
-                            return (IComparable)item.Value.region;
-                        case 2:
-                            return (IComparable)item.Value.name;
-                        case 3:
-                            return (IComparable)item.Value.title_id;
-                        default:
-                            return string.Empty;
-                    }
-                });
+            IOrderedEnumerable<KeyValuePair<string, GameContent>> ordered;
+            long size;
+            double numericSize;
+
+            switch (sortCriteria)
+            {
+                case 0:
+                    ordered = ascending ?
+                        itemsList.OrderBy(item =>
+                        {
+                            if (long.TryParse(item.Value.size, out size))
+                                return size;
+                            string sizeStr = item.Value.size.ToUpper().Trim();
+                            if (double.TryParse(sizeStr.Replace("KB", "").Replace("MB", "").Replace("GB", "").Trim(), out numericSize))
+                            {
+                                if (sizeStr.EndsWith("KB")) return (long)(numericSize * 1024);
+                                if (sizeStr.EndsWith("MB")) return (long)(numericSize * 1024 * 1024);
+                                if (sizeStr.EndsWith("GB")) return (long)(numericSize * 1024 * 1024 * 1024);
+                            }
+                            return long.MaxValue;
+                        }) :
+                        itemsList.OrderByDescending(item =>
+                        {
+                            if (long.TryParse(item.Value.size, out size))
+                                return size;
+                            string sizeStr = item.Value.size.ToUpper().Trim();
+                            if (double.TryParse(sizeStr.Replace("KB", "").Replace("MB", "").Replace("GB", "").Trim(), out numericSize))
+                            {
+                                if (sizeStr.EndsWith("KB")) return (long)(numericSize * 1024);
+                                if (sizeStr.EndsWith("MB")) return (long)(numericSize * 1024 * 1024);
+                                if (sizeStr.EndsWith("GB")) return (long)(numericSize * 1024 * 1024 * 1024);
+                            }
+                            return long.MaxValue;
+                        });
+                    break;
+
+                case 1:
+                    ordered = ascending ?
+                        itemsList.OrderBy(item =>
+                        {
+                            string region = item.Value.region?.ToUpperInvariant() ?? "???";
+                            switch (region)
+                            {
+                                case "ALL": return 0;
+                                case "ASIA": return 1;
+                                case "EUR": return 2;
+                                case "JAP": return 3;
+                                case "USA": return 4;
+                                case "???":
+                                default:
+                                    return 4;
+                            }
+                        }) :
+                        itemsList.OrderByDescending(item =>
+                        {
+                            string region = item.Value.region?.ToUpperInvariant() ?? "???";
+                            switch (region)
+                            {
+                                case "ALL": return 0;
+                                case "ASIA": return 1;
+                                case "EUR": return 2;
+                                case "JAP": return 3;
+                                case "USA": return 4;
+                                case "???":
+                                default:
+                                    return 4;
+                            }
+                        });
+                    break;
+
+                case 2:
+                    ordered = ascending ?
+                        itemsList.OrderBy(item => item.Value.name ?? string.Empty) :
+                        itemsList.OrderByDescending(item => item.Value.name ?? string.Empty);
+                    break;
+
+                case 3:
+                    int number;
+                    ordered = ascending ?
+                        itemsList.OrderBy(item =>
+                        {
+                            string titleId = item.Value.title_id ?? string.Empty;
+                            string numericPart = new string(titleId.Where(char.IsDigit).ToArray());
+                            return int.TryParse(numericPart, out number) ? number : int.MaxValue;
+                        }) :
+                        itemsList.OrderByDescending(item =>
+                        {
+                            string titleId = item.Value.title_id ?? string.Empty;
+                            string numericPart = new string(titleId.Where(char.IsDigit).ToArray());
+                            return int.TryParse(numericPart, out number) ? number : int.MaxValue;
+                        });
+                    break;
+
+                default:
+                    return itemsList;
+            }
+
+            return ordered;
         }
     }
 
@@ -161,16 +234,18 @@ public class ContentHandler : MonoBehaviour
                     var package = Content.PKGs[currentIndex];
                     if (package == null) continue;
 
-                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id) || string.IsNullOrEmpty(item.Value.name) || string.IsNullOrEmpty(item.Value.size))
+                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
+                        || string.IsNullOrEmpty(item.Value.name) || string.IsNullOrEmpty(item.Value.size))
                         continue;
 
                     string region = item.Value.region?.ToLower().Trim();
 
-                    if (string.IsNullOrEmpty(region) || !validRegions.Contains(region) || region.Length > 4)
-                        item.Value.region = "???";
+                    if (string.IsNullOrEmpty(region) || !validRegions.Contains(region) ||
+                        region.Length > 4 || region == "unk" || region == "???") item.Value.region = "???";
                     else
                         item.Value.region = region.ToUpper();
 
+                    item.Value.region.Replace("???", "UNK");
                     item.Value.min_fw = string.IsNullOrEmpty(item.Value.min_fw) ? "?.??" : item.Value.min_fw;
                     item.Value.release = string.IsNullOrEmpty(item.Value.release) ? "UNKNOWN" : item.Value.release;
 
@@ -195,8 +270,8 @@ public class ContentHandler : MonoBehaviour
                     var package = Content.PKGs[currentIndex];
                     if (package == null) continue;
 
-                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id) 
-                        || string.IsNullOrEmpty(item.Value.name) 
+                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
+                        || string.IsNullOrEmpty(item.Value.name)
                         || string.IsNullOrEmpty(item.Value.size))
                         continue;
 
@@ -205,6 +280,7 @@ public class ContentHandler : MonoBehaviour
                         !validRegions.Contains(region) || region.Length > 4)
                         ? "???" : region.ToUpper();
 
+                    item.Value.version = item.Value.version ?? "?.??";
                     item.Value.min_fw = item.Value.min_fw ?? "?.??";
                     item.Value.release = item.Value.release ?? "UNKNOWN";
 
@@ -236,11 +312,52 @@ public class ContentHandler : MonoBehaviour
             .ToList();
     }
 
-    public static void UpdateContent(int page)
+    public static async void UpdateContent(int page)
     {
         currentPage = Mathf.Max(page, 0);
-
         int startIndex = currentPage * itemsPerPage;
+
+        if (contentFilter == (int)ContentType.ALL || contentFilter == (int)ContentType.Homebrew)
+        {
+            parsedData.Clear();
+            Dictionary<string, GameContent> allContent = new Dictionary<string, GameContent>();
+
+            if (await JSON.ParseJSON(ContentType.Homebrew) != 0)
+            {
+                var app = parsedData.FirstOrDefault(x => x.Value.title_id == "PKGI13337");
+                if (app.Value != null)
+                    allContent[app.Key] = app.Value;
+            }
+
+            foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
+            {
+                if (type != ContentType.Config && type != ContentType.ALL && type != ContentType.Homebrew)
+                {
+                    parsedData.Clear();
+                    int result = await JSON.ParseJSON(type);
+                    if (result == 0)
+                        continue;
+
+                    foreach (var kvp in parsedData)
+                    {
+                        if (kvp.Value.title_id == "PKGI13337")
+                            continue;
+
+                        string key = kvp.Key;
+                        if (allContent.ContainsKey(key))
+                            key = $"{key}_{type}";
+                        allContent[key] = kvp.Value;
+                    }
+                }
+            }
+
+            parsedData = allContent;
+        }
+        else
+        {
+            if (await JSON.ParseJSON((ContentType)contentFilter, true) == 0)
+                parsedData.Clear();
+        }
 
         var itemsList = parsedData
             .Where(item => item.Value != null &&
@@ -249,13 +366,15 @@ public class ContentHandler : MonoBehaviour
                            !string.IsNullOrEmpty(item.Value.size))
             .ToList();
 
+        if (contentFilter == (int)ContentType.ALL)
+            itemsList = Filtering.FilterByRegion(itemsList);
+
         itemsList = Filtering.ApplyFilter(itemsList);
 
         int filteredOutCount = parsedData.Count - itemsList.Count;
         filteredCount = itemsList.Count;
 
         var sortedItemsList = Filtering.SortItems(itemsList);
-        sortedItemsList = ascending ? sortedItemsList : sortedItemsList.Reverse().ToList();
 
         if (startIndex >= sortedItemsList.Count())
         {
@@ -282,60 +401,41 @@ public class ContentHandler : MonoBehaviour
         }
 
         UIManagement.UpdateScrollbar();
-
         UpdateGameContentList(sortedItemsList);
     }
 
-    public void UpdatePkgCount()
+    public async void UpdatePkgCount()
     {
-        if (!isPopulatedViaWeb)
-        {
-            int totalPKGs = 0;
+        int totalPKGs = 0;
 
-            totalPKGs = Enum.GetValues(typeof(ContentType))
+        var contentTypes = Enum.GetValues(typeof(ContentType))
             .Cast<ContentType>()
-            .Where(type => type != ContentType.Config)
-            .Sum(type =>
-            {
-                JSON.ParseJSON(type);
-                return parsedData.Count;
-            });
+            .Where(type => type != ContentType.Config && type != ContentType.ALL)
+            .ToList();
 
-            filteredCount = Mathf.Max(filteredCount, 0);
-            Filtering.RemoveInvalidItems(ref parsedData);
-
-            JSON.ParseJSON((ContentType)contentFilter);
-
-            isPopulatedViaWeb = true;
-
-            int clampPkgCount = Mathf.Clamp(filteredCount - removedCount, 0, filteredCount - removedCount);
-
-            var text = $"Content: {clampPkgCount} ({totalPKGs - removedCount})";
-
-            if (pkgCount.text != text) UI.ChangeText(pkgCount, text);
-
-            if (currentInt.text != text)
-            {
-                int currentPKG = 0;
-
-                if (clampPkgCount == 0)
-                    currentPKG = 0;
-                else
-                    currentPKG = Mathf.Clamp(contentScroll + 1, 0, clampPkgCount);
-
-                UI.ChangeText(currentInt, $"{currentPKG} / {clampPkgCount}");
-
-                if (currentPKG == 0 && clampPkgCount == 0)
-                {
-                    currentInt.text = string.Empty;
-                    currentInt.enabled = false;
-                }
-                else
-                {
-                    currentInt.enabled = true;
-                }
-            }
+        foreach (var type in contentTypes)
+        {
+            parsedData.Clear();
+            await JSON.ParseJSON(type);
+            totalPKGs += parsedData.Count;
         }
+
+        filteredCount = Mathf.Max(filteredCount, 0);
+        Filtering.RemoveInvalidItems(ref parsedData);
+        await JSON.ParseJSON((ContentType)contentFilter);
+
+        int clampPkgCount = Mathf.Clamp(filteredCount - removedCount, 0, filteredCount - removedCount);
+        var text = $"Content: {clampPkgCount} ({totalPKGs - removedCount})";
+        if (pkgCount.text != text) UI.ChangeText(pkgCount, text);
+
+        int currentPKG = 0;
+
+        if (clampPkgCount > 0)
+            currentPKG = Mathf.Clamp(contentScroll + 1, 0, clampPkgCount);
+
+        UI.ChangeText(currentInt, $"{currentPKG} / {clampPkgCount}");
+
+        currentInt.enabled = !(currentPKG == 0 && clampPkgCount == 0);
     }
 
     public static void HighlightCurrentPkg()

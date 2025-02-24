@@ -5,11 +5,12 @@ using static JsonData;
 
 public class Variables
 {
-    public static float version = 0.81f;
     public static bool nightly = true;
+    public static float version = 0.86f;
+    public static int build = 308;
 
-    // may be high due to testing UOB
-    public static int build = 24;
+    public static bool? updateAvailable = null;
+    public static float? latestVersion = null;
 
     #region Global Variabales
     public static RawImage
@@ -72,8 +73,8 @@ public class Variables
         sortByOptions = { "Size", "Region",
                        "Name", "Title ID" },
 
-        contentOptions = { "Games", "Apps", "Updates", "DLCs",
-                                          "Demos", "Homebrew" };
+        contentOptions = {  "PS1", "PS2", "PSP", "Games", "Apps", "Updates",
+                "DLCs", "Demos", "Homebrew", "Emulators", "Themes", "ALL" };
 
     public static string
         SearchText = "Search Content (By name or title ID)",
@@ -103,17 +104,22 @@ public class Variables
     public static Dictionary<string, string>
         ContentURLs = new Dictionary<string, string>
         {
+            { "ps1", null },
+            { "ps2", null },
+            { "psp", null },
             { "games", null },
             { "apps", null },
             { "updates", null },
             { "dlc", null },
             { "demos", null },
             { "homebrew", null },
+            { "emulators", null },
+            { "themes", null },
     };
 
     public static int
         languageID = 1, sortCriteria = 2,
-        contentFilter = (int)ContentType.Homebrew;
+        contentFilter = (int)ContentType.ALL;
 
     public static string[]
         filteredRegions = { "Asia",
