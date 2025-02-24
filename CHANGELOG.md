@@ -24,7 +24,7 @@
 - Added check for updates on launch that will install and launch HB-Store, if not already present.
 - When viewing details for the app under the "Homebrew" or "ALL" page, the values will update..
 - Introduced a new default page for displaying all content, which is set for new users inital laucnh
-- Dedicated pages added for themes, emulators, PS1/PS2, and PSP games.
+- Dedicated pages added for themes, emulators, PS1/PS2, PSP games, and all content in one.
 
 ### **Optimizations & More:**
 - Fixed issue where background images and other content failed to load with local URLs, as per <br>

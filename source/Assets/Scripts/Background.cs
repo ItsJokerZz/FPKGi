@@ -361,7 +361,7 @@ public class Background : MonoBehaviour
                 latestVersion = found;
         }
 
-        if (version != latestVersion || updateAvailable == true)
+        if (version < latestVersion || updateAvailable == true)
         {
             UI.FindInactiveObjectsByPath("Canvas/Details")?.SetActive(false);
             GameObject.Find("Canvas/Main/Images/Controls/Details")?.SetActive(false);

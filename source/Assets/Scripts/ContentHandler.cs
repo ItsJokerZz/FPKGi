@@ -317,21 +317,14 @@ public class ContentHandler : MonoBehaviour
         currentPage = Mathf.Max(page, 0);
         int startIndex = currentPage * itemsPerPage;
 
-        if (contentFilter == (int)ContentType.ALL || contentFilter == (int)ContentType.Homebrew)
+        if (contentFilter == (int)ContentType.ALL)
         {
             parsedData.Clear();
             Dictionary<string, GameContent> allContent = new Dictionary<string, GameContent>();
 
-            if (await JSON.ParseJSON(ContentType.Homebrew) != 0)
-            {
-                var app = parsedData.FirstOrDefault(x => x.Value.title_id == "PKGI13337");
-                if (app.Value != null)
-                    allContent[app.Key] = app.Value;
-            }
-
             foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
             {
-                if (type != ContentType.Config && type != ContentType.ALL && type != ContentType.Homebrew)
+                if (type != ContentType.Config && type != ContentType.ALL)
                 {
                     parsedData.Clear();
                     int result = await JSON.ParseJSON(type);
@@ -340,9 +333,6 @@ public class ContentHandler : MonoBehaviour
 
                     foreach (var kvp in parsedData)
                     {
-                        if (kvp.Value.title_id == "PKGI13337")
-                            continue;
-
                         string key = kvp.Key;
                         if (allContent.ContainsKey(key))
                             key = $"{key}_{type}";
@@ -352,6 +342,12 @@ public class ContentHandler : MonoBehaviour
             }
 
             parsedData = allContent;
+        }
+        else if (contentFilter == (int)ContentType.Homebrew)
+        {
+            parsedData.Clear();
+            await JSON.ParseJSON(ContentType.Homebrew);
+            await JSON.ParseJSON(ContentType.Emulators);
         }
         else
         {
