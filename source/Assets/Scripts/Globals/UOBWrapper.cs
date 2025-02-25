@@ -299,5 +299,5 @@ public static class UOBWrapper
         image.gameObject.SetActive(true);
         return true;
     }
-    
+
 }

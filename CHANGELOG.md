@@ -1,8 +1,15 @@
 # FPKGi - Nightly Changelog
+<details>
+<summary>[ v0.87-nightly Build: 4 ] from Feb 25th, 2025</summary>
+<br>
+    
+**Fixes:**
+- [Issue #8](https://github.com/ItsJokerZz/FPKGi/issues/8), where the config wouldnt save / would be reset to defaults when closing unless toggling the menu.
+- [Issue #9](https://github.com/ItsJokerZz/FPKGi/issues/9), which prevented users from downloading content due to recent changes to handle page content.
+</details>
 
 <details>
 <summary>[ v0.86-nightly Build: 309 ] from Feb 23rd, 2025</summary>
-
 <br>
 
 ### **Fixes:**
@@ -31,25 +38,20 @@
     [ModdedWarfare's YT video](https://youtu.be/EYrvdpPGjTI?si=iWP-igln-WdBODDI&t=651), you must add "http(s)://" for local connections, or it won’t work.
 - Reduced delays, freezing, and black screens, particularly on first launch, improving overall stability.
 - Adjusted default values for generated content JSONs to reflect the content type more clearly.
-
 </details>
-
 
 <details>
 <summary>[ v0.81-nightly Build: 24 ] from Feb 13th, 2025</summary>
-
 <br>
     
 **Fixes:**
 - **Initial Setup**
   - Resolved an issue where the app couldn't create the necessary directories and files.
   - Fixed the package count to ensure it's updated after creating inital demo content.
-  
 </details>
 
 <details>
 <summary>[ v0.80-nightly Build: 193 ] from Jan 9th, 2025</summary>
-
 <br>
     
 **Fixes:**
@@ -69,5 +71,4 @@
 
 **Features:**
 - **Downloading:** Added elapsed download time counter to the UI.
-
 </details>

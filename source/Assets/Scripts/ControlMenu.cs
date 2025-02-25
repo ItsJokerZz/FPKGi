@@ -781,16 +781,8 @@ public class ControlMenu : MonoBehaviour
 
                         if (currentPkg.TitleID.text == "PKGI13337")
                         {
-                            try
-                            {
-                                CheckForUpdates();
-
-                                return;
-                            }
-                            catch
-                            {
-                                Print("Failed to check for updates!", PrintType.Error);
-                            }
+                            ShowUIState(null, mainControls);
+                            CheckForUpdates();
 
                             return;
                         }
@@ -810,20 +802,25 @@ public class ControlMenu : MonoBehaviour
 
                         var downloadlink = downloadInfo.Key;
 
-                        if (contentFilter == (int)ContentType.ALL)
+                        if (downloadlink != null)
                         {
-                            var pkgiEntry = JSON.FindKeyByValue(parsedData, currentPkg.TitleID.text);
-
-                            if (pkgiEntry != null)
+                            if (downloadlink.Contains($"{contentFilter}"))
+                                downloadlink = downloadlink.Replace($"{contentFilter}", "");
+                            else
                             {
-                                var index = pkgiEntry.IndexOf('_');
-                                if (index >= 0)
-                                    downloadlink = pkgiEntry.Substring(index + 1);
+                                foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
+                                {
+                                    if (type != ContentType.Config && type != ContentType.ALL)
+                                    {
+                                        if (downloadlink.Contains($"{type}_"))
+                                        {
+                                            downloadlink = downloadlink.Replace($"{type}_", "");
+                                            break;
+                                        }
+                                    }
+                                }
                             }
-
                         }
-
-                        Print("pkg download: " + downloadlink);
 
                         if (directDownload)
                         {
@@ -843,7 +840,7 @@ public class ControlMenu : MonoBehaviour
                             isDownloading = false;
 
                             if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-                                UOB.DownloadPkgFile(downloadInfo.Key, downloadPath,
+                                UOB.DownloadPkgFile(downloadlink, downloadPath,
                                     $"{downloadInfo.Value.name} [{downloadInfo.Value.title_id}]", true, "NULL");
 
                             downloadCoroutine = StartCoroutine(UpdateDownloadProgress());
@@ -853,10 +850,7 @@ public class ControlMenu : MonoBehaviour
                         else
                         {
                             if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-                            {
-                                ShowUIState(null, null);
-                                UOB.DownloadAndInstallPKG(downloadInfo.Key, downloadInfo.Value.name, downloadInfo.Value.cover_url);
-                            }
+                                UOB.DownloadAndInstallPKG(downloadlink, downloadInfo.Value.name, downloadInfo.Value.cover_url);
                         }
                     }
                 }

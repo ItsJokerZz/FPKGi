@@ -6,8 +6,8 @@ using static JsonData;
 public class Variables
 {
     public static bool nightly = true;
-    public static float version = 0.86f;
-    public static int build = 309;
+    public static float version = 0.87f;
+    public static int build = 4;
 
     public static bool? updateAvailable = null;
     public static float? latestVersion = null;

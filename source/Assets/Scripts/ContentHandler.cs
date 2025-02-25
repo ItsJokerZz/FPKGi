@@ -316,58 +316,57 @@ public class ContentHandler : MonoBehaviour
     {
         currentPage = Mathf.Max(page, 0);
         int startIndex = currentPage * itemsPerPage;
+        
+        Dictionary<string, GameContent> tempData = new Dictionary<string, GameContent>();
 
         if (contentFilter == (int)ContentType.ALL)
         {
-            parsedData.Clear();
-            Dictionary<string, GameContent> allContent = new Dictionary<string, GameContent>();
-
+            var savedData = new Dictionary<string, GameContent>(parsedData);
+            
             foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
             {
                 if (type != ContentType.Config && type != ContentType.ALL)
                 {
                     parsedData.Clear();
-                    int result = await JSON.ParseJSON(type);
-                    if (result == 0)
-                        continue;
-
-                    foreach (var kvp in parsedData)
+                    int result = await JSON.ParseJSON(type, false);
+                    if (result != 0)
                     {
-                        string key = kvp.Key;
-                        if (allContent.ContainsKey(key))
-                            key = $"{key}_{type}";
-                        allContent[key] = kvp.Value;
+                        foreach (var kvp in parsedData)
+                        {
+                            string key = kvp.Key;
+                            if (tempData.ContainsKey(key))
+                                key = $"{key}_{type}";
+                            tempData[key] = kvp.Value;
+                        }
                     }
                 }
             }
-
-            parsedData = allContent;
+            
+            parsedData = tempData;
         }
         else if (contentFilter == (int)ContentType.Homebrew)
         {
             parsedData.Clear();
-            Dictionary<string, GameContent> combinedContent = new Dictionary<string, GameContent>();
-
-            await JSON.ParseJSON(ContentType.Homebrew);
+            await JSON.ParseJSON(ContentType.Homebrew, false);
             foreach (var kvp in parsedData)
-                combinedContent[kvp.Key] = kvp.Value;
+                tempData[kvp.Key] = kvp.Value;
 
             parsedData.Clear();
-            await JSON.ParseJSON(ContentType.Emulators);
+            await JSON.ParseJSON(ContentType.Emulators, false);
             foreach (var kvp in parsedData)
             {
                 string key = kvp.Key;
-                if (combinedContent.ContainsKey(key))
+                if (tempData.ContainsKey(key))
                     key = $"{key}_emulator";
-                combinedContent[key] = kvp.Value;
+                tempData[key] = kvp.Value;
             }
-
-            parsedData = combinedContent;
+            
+            parsedData = tempData;
         }
         else
         {
-            if (await JSON.ParseJSON((ContentType)contentFilter, true) == 0)
-                parsedData.Clear();
+            parsedData.Clear();
+            await JSON.ParseJSON((ContentType)contentFilter, false);
         }
 
         var itemsList = parsedData

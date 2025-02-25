@@ -9,6 +9,7 @@ using static JsonData;
 using static UOBWrapper;
 using static Utilities;
 using static Variables;
+using System.Reflection;
 
 public class Background : MonoBehaviour
 {
@@ -221,35 +222,23 @@ public class Background : MonoBehaviour
             return;
         }
 
-        #region Resolves issues present in versions prior to v0.81
-        string homebrewPath = IO.GetFilePath(ContentType.Homebrew);
-        if (File.Exists(homebrewPath))
-        {
-            string homebrewJson = File.ReadAllText(homebrewPath);
-            var content = JsonConvert.DeserializeObject<Games>(homebrewJson);
-            var fpkgiEntry = content.DATA.FirstOrDefault(entry => entry.Value.title_id == "FPKGI13337");
-            if (fpkgiEntry.Value != null)
-            {
-                var oldKey = fpkgiEntry.Key;
-                var gameContent = fpkgiEntry.Value;
-                gameContent.title_id = "PKGI13337";
-
-                content.DATA.Remove(oldKey);
-                content.DATA[oldKey] = gameContent;
-
-                string updatedJson = JsonConvert.SerializeObject(content, Formatting.Indented);
-                File.WriteAllText(homebrewPath, updatedJson);
-            }
-        }
-
         string jsonContent = File.ReadAllText(configPath);
         var config = JsonConvert.DeserializeObject<Config>(jsonContent);
-        #endregion
 
-        SaveConfiguration();
-
-        await JSON.ParseJSON((ContentType)contentFilter);
-        ContentHandler.UpdateContent(0);
+        if (config.preferences.content_urls != null)
+        {
+            foreach (var key in Variables.ContentURLs.Keys.ToList())
+            {
+                var configValue = config.preferences.content_urls.GetType()
+                    .GetProperty(key, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
+                    .GetValue(config.preferences.content_urls) as string;
+                
+                if (!string.IsNullOrEmpty(configValue))
+                {
+                    Variables.ContentURLs[key] = configValue;
+                }
+            }
+        }
 
         string contentFilterStr = config.filtering.content?.ToLower();
         if (!string.IsNullOrEmpty(contentFilterStr))
@@ -317,7 +306,7 @@ public class Background : MonoBehaviour
 
         ascending = config.filtering.sort?.ascending ?? ascending;
         filteredRegions = config.filtering.regions?.Distinct().ToArray() ?? filteredRegions;
-
+        
         directDownload = config.preferences.downloads?.directDownload ?? directDownload;
         downloadPath = config.preferences.downloads?.downloadPath ?? downloadPath;
         installAfter = config.preferences.downloads?.installAfter ?? installAfter;
@@ -327,20 +316,10 @@ public class Background : MonoBehaviour
         backgroundMusic = config.preferences.application?.backgroundMusic ?? backgroundMusic;
         populateViaWeb = config.preferences.application?.populateViaWeb ?? populateViaWeb;
 
-        if (config.preferences.content_urls != null)
-        {
-            Variables.ContentURLs["ps1"] = config.preferences.content_urls.ps1 ?? Variables.ContentURLs["ps1"];
-            Variables.ContentURLs["ps2"] = config.preferences.content_urls.ps2 ?? Variables.ContentURLs["ps2"];
-            Variables.ContentURLs["psp"] = config.preferences.content_urls.psp ?? Variables.ContentURLs["psp"];
-            Variables.ContentURLs["games"] = config.preferences.content_urls.games ?? Variables.ContentURLs["games"];
-            Variables.ContentURLs["apps"] = config.preferences.content_urls.apps ?? Variables.ContentURLs["apps"];
-            Variables.ContentURLs["updates"] = config.preferences.content_urls.updates ?? Variables.ContentURLs["updates"];
-            Variables.ContentURLs["dlc"] = config.preferences.content_urls.dlc ?? Variables.ContentURLs["dlc"];
-            Variables.ContentURLs["demos"] = config.preferences.content_urls.demos ?? Variables.ContentURLs["demos"];
-            Variables.ContentURLs["homebrew"] = config.preferences.content_urls.homebrew ?? Variables.ContentURLs["homebrew"];
-            Variables.ContentURLs["emulators"] = config.preferences.content_urls.emulators ?? Variables.ContentURLs["emulators"];
-            Variables.ContentURLs["themes"] = config.preferences.content_urls.themes ?? Variables.ContentURLs["themes"];
-        }
+        SaveConfiguration();
+
+        await JSON.ParseJSON((ContentType)contentFilter);
+        ContentHandler.UpdateContent(0);
 
         if (URL.IsValidImage(background_uri))
             SetImageFromURL(background_uri, ref background);
