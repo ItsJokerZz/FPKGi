@@ -737,7 +737,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &188793933
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4845,7 +4845,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &997264836
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5286,11 +5286,11 @@ MonoBehaviour:
   background: {fileID: 1021039069}
   coverImage: {fileID: 847230471}
   mainTexts: []
-  freeSpace: {fileID: 1488473098}
   textTransform: {fileID: 583895579}
   prefab: {fileID: 1286442632961542, guid: fc60bcca9384dfe4d9eda32200b9371e, type: 2}
   Content:
     PKGs: []
+  freeSpace: {fileID: 1488473098}
 --- !u!114 &1055626760
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5329,6 +5329,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   pkgCount: {fileID: 1976957983}
   currentInt: {fileID: 1929102947}
+  allCachedCount: 0
 --- !u!81 &1055626762
 AudioListener:
   m_ObjectHideFlags: 0
@@ -7152,7 +7153,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: o Populate via Web
+  m_Text: o Populate Via Web
 --- !u!222 &1478943884
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -7250,7 +7251,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1488473097
 RectTransform:
   m_ObjectHideFlags: 0
@@ -9297,7 +9298,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1976957982
 RectTransform:
   m_ObjectHideFlags: 0

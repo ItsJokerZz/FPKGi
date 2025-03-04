@@ -28,8 +28,9 @@ public static class UOBWrapper
             {
                 if (hasTempErrorOccurred) return;
 
-                Print("FAILED TO DETECT TEMP! (THIS SHOULDN'T HAPPEN! REPORT TO \"itsjokerzz / ItsJokerZz#3022\" on Discord)\n" +
-                      "You may also submit an issue with the GitHub repo, so I can try to troubleshoot, but this is undocumented.");
+                Print(true, PrintType.Error, "FAILED TO DETECT TEMP! (THIS SHOULDN'T HAPPEN! REPORT TO \"itsjokerzz / ItsJokerZz#3022\" on Discord)\n" +
+                    "You may also submit an issue with the GitHub repo, so I can try to troubleshoot, but this is undocumented.");
+
                 hasTempErrorOccurred = true;
             }
 
@@ -100,13 +101,14 @@ public static class UOBWrapper
                 }
             }
         }
+    
     }
 
     public static bool DisablePrintWarnings { get; set; }
 
     public enum PrintType { Default, Warning, Error }
 
-    // make use logtype and update uob
+    // make use logtype and update uob plugin
     public static void Print(string message, PrintType type = PrintType.Default)
     {
         if (string.IsNullOrEmpty(message) ||
@@ -118,7 +120,7 @@ public static class UOBWrapper
     }
 
     public static void Print(bool saveLog = false, PrintType type = PrintType.Default,
-        string message = null, string filePath = "/data/UnityOrbisBridge.log")
+        string message = null, string filePath = "/user/data/UnityOrbisBridge.log")
     {
         if (string.IsNullOrEmpty(message) ||
             (type == PrintType.Warning && DisablePrintWarnings)) return;
@@ -171,6 +173,17 @@ public static class UOBWrapper
 
     public static async Task<string> DownloadAsBytes(string url)
     {
+        if (string.IsNullOrWhiteSpace(url)) return null;
+
+        url = Uri.EscapeUriString(url.Trim());
+        Uri uri;
+        if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
+            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
+        {
+            Print($"Invalid URL format: {url}", PrintType.Error);
+            return null;
+        }
+
         if (Application.platform == RuntimePlatform.PS4)
         {
             UOB.BreakFromSandbox();
@@ -215,7 +228,7 @@ public static class UOBWrapper
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
             !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
-            Print($"Invalid URL format: {url}", PrintType.Default);
+            Print($"Invalid URL format: {url}", PrintType.Error);
             return false;
         }
 
@@ -272,12 +285,12 @@ public static class UOBWrapper
         if (imageBytes.Length < 2 ||
             !(imageBytes[0] == 0xFF
             && imageBytes[1] == 0xD8) &&  // JPEG/JPG
-            !(imageBytes.Length >= 4 
-            && imageBytes[0] == 0x89 && 
-            imageBytes[1] == 0x50 
-            && imageBytes[2] == 0x4E 
+            !(imageBytes.Length >= 4
+            && imageBytes[0] == 0x89 &&
+            imageBytes[1] == 0x50
+            && imageBytes[2] == 0x4E
             && imageBytes[3] == 0x47) &&  // PNG
-            !(imageBytes[0] == 0x42 
+            !(imageBytes[0] == 0x42
             && imageBytes[1] == 0x4D))  // BMP
         {
             Print("Downloaded image is not a valid image.", PrintType.Error);

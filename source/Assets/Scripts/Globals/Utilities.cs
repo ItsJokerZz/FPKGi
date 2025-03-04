@@ -1,6 +1,7 @@
 ﻿using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -19,7 +20,7 @@ public class Utilities
     {
         public static GameObject FindInactiveObjectsByPath(string path)
         {
-            Transform[] objs = Resources.FindObjectsOfTypeAll<Transform>() as Transform[];
+            Transform[] objs = Resources.FindObjectsOfTypeAll<Transform>();
 
             for (int i = 0; i < objs.Length; i++)
             {
@@ -64,9 +65,7 @@ public class Utilities
             try
             {
                 foreach (var entry in chunk)
-                {
                     parsedData[entry.Key] = entry.Value;
-                }
             }
             catch (Exception ex)
             {
@@ -107,37 +106,68 @@ public class Utilities
             if (clampPkgCount <= 0)
                 scrollbar.gameObject.SetActive(false);
         }
+
+        public static string FormatVersion(float? version)
+        {
+            string formattedVersion;
+
+            string versionStr = version?.ToString("0.000", CultureInfo.InvariantCulture);
+
+            if (versionStr.EndsWith("0"))
+                formattedVersion = version?.ToString("0.00", CultureInfo.InvariantCulture);
+            else
+            {
+                string[] parts = versionStr.Split('.');
+                if (parts.Length > 1 && parts[1].Length > 2)
+                    formattedVersion = $"{parts[0]}.{parts[1].Substring(0, 2)}.{parts[1].Substring(2)}";
+                else
+                    formattedVersion = version?.ToString("0.00", CultureInfo.InvariantCulture);
+            }
+
+            if (CultureInfo.CurrentCulture.NumberFormat.CurrencyDecimalSeparator == ",")
+                formattedVersion = formattedVersion.Replace('.', ',');
+
+            return formattedVersion;
+        }
+
     }
 
     public class JSON
     {
-        public static string FindKeyByValue(Dictionary<string, GameContent> dict, string titleId)
+        public static string FindKeyByValue(Dictionary<string, GameContent> dict, string titleId) =>
+            dict.FirstOrDefault(pair => pair.Value.title_id == titleId).Key;
+
+        private static int ParseGameData(string jsonContent = "", bool preserveExisting = false)
         {
-            return dict.FirstOrDefault(pair => pair.Value.title_id == titleId).Key;
-        }
-
-        private static int ParseGameData(string jsonContent = "", bool preserveExisting = false) // might not need preserve, remove?
-        {
-            var content = JsonConvert.DeserializeObject<Games>(jsonContent);
-
-            if (!preserveExisting)
-                parsedData.Clear();
-
-            const int chunkSize = 25;
-            var dataEntries = content.DATA.ToList();
-            int totalCount = dataEntries.Count;
-
-            for (int i = 0; i < totalCount; i += chunkSize)
+            try
             {
-                var chunk = dataEntries.Skip(i).Take(chunkSize).ToList();
-                if (!UI.UpdateUIFromChunk(chunk))
-                    return 0;
-            }
+                var content = JsonConvert.DeserializeObject<Games>(jsonContent);
 
-            return 1;
+                if (!preserveExisting)
+                    parsedData.Clear();
+
+                const int chunkSize = 100;
+                var dataEntries = content.DATA.ToList();
+
+                for (int i = 0; i < dataEntries.Count; i += chunkSize)
+                {
+                    var chunk = dataEntries.Skip(i).Take(chunkSize);
+                    foreach (var entry in chunk)
+                    {
+                        parsedData[entry.Key] = entry.Value;
+                    }
+                }
+
+                return 1;
+            }
+            catch (Exception ex)
+            {
+                Print($"Failed to parse game data: {ex.Message}", PrintType.Error);
+                return 0;
+            }
         }
 
-        public static async Task<int> ParseJSON(ContentType contentType = ContentType.Config, bool onlyCheckIfFileExists = false)
+        public static async Task<int> ParseJSON(ContentType contentType = ContentType.Config)
         {
             if (contentType == ContentType.ALL)
             {
@@ -145,6 +175,8 @@ public class Utilities
                 var allContentTypes = Enum.GetValues(typeof(ContentType))
                     .Cast<ContentType>()
                     .Where(type => type != ContentType.Config && type != ContentType.ALL);
+
+                var processedTitleIds = new HashSet<string>();
 
                 foreach (var type in allContentTypes)
                 {
@@ -160,8 +192,11 @@ public class Utilities
                             {
                                 foreach (var entry in content.DATA)
                                 {
-                                    string uniqueKey = $"{type}_{entry.Key}";
-                                    parsedData[uniqueKey] = entry.Value;
+                                    if (!processedTitleIds.Contains(entry.Value.title_id))
+                                    {
+                                        parsedData[entry.Key] = entry.Value;
+                                        processedTitleIds.Add(entry.Value.title_id);
+                                    }
                                 }
                             }
                         }
@@ -171,21 +206,21 @@ public class Utilities
                         }
                     }
                     else
-                        await ParseJSON(type, false);
+                        await ParseJSON(type);
                 }
                 return parsedData.Count > 0 ? 1 : 0;
             }
 
+            string url = null;
             string singleFilePath = IO.GetFilePath(contentType);
-            bool preserveExisting = contentType != 
+            bool preserveExisting = contentType !=
                 ContentType.Config && contentFilter == (int)ContentType.ALL;
+            string webContent = string.Empty;
 
             if (populateViaWeb)
             {
                 try
                 {
-                    string url = null;
-
                     switch (contentType)
                     {
                         case ContentType.PS1:
@@ -223,10 +258,14 @@ public class Utilities
                             break;
                     }
 
-                    if (string.IsNullOrEmpty(url) || !onlyCheckIfFileExists)
-                        goto finish;
+                    if (URL.IsValidURI(url))
+                    {
+                        Print(true, PrintType.Warning, "Attempting to download JSON from: " + url);
+                        webContent = await DownloadAsBytes(url);
 
-                    return ParseGameData(await DownloadAsBytes(url), preserveExisting);
+                        if (string.IsNullOrEmpty(webContent))
+                            Print($"Web-based loading failed: no data available for parsing.", PrintType.Error);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -234,8 +273,6 @@ public class Utilities
                     Print("Falling back to local file loading.", PrintType.Warning);
                 }
             }
-
-        finish:
             if (!File.Exists(singleFilePath) && contentType != ContentType.ALL)
             {
                 try
@@ -254,7 +291,7 @@ public class Utilities
                                         title_id = "PKGI13337",
                                         region = "ALL",
                                         name = "F[PKGi]",
-                                        version = version.ToString(),
+                                        version = UI.FormatVersion(version),
                                         release = "12-25-2024",
                                         size = "75000000",
                                         min_fw = "4.50",
@@ -368,8 +405,14 @@ public class Utilities
             try
             {
                 string jsonContent = File.ReadAllText(singleFilePath);
+                bool isValidWebContent = populateViaWeb && URL.IsValidURI(url);
                 if (contentType != ContentType.Config)
-                    return ParseGameData(jsonContent, preserveExisting);
+                    if (string.IsNullOrEmpty(webContent))
+                        return ParseGameData(jsonContent, preserveExisting);
+
+                return isValidWebContent
+            ? ParseGameData(webContent, preserveExisting)
+            : ParseGameData(jsonContent, preserveExisting);
             }
             catch (Exception ex)
             {
@@ -377,8 +420,10 @@ public class Utilities
                     return 0;
             }
 
+
             return 1;
         }
+
     }
 
     public class IO
@@ -391,15 +436,15 @@ public class Utilities
             {
                 double gigabytes = bytes / (1024.0 * 1024.0 * 1024.0);
                 if (gigabytes >= 1)
-                    return $"{Math.Round(gigabytes, 2):F2} GB";
+                    return $"{gigabytes:0.##} GB";
 
                 double megabytes = bytes / (1024.0 * 1024.0);
                 if (megabytes >= 1)
-                    return $"{Math.Round(megabytes, 2):F2} MB";
+                    return $"{megabytes:0.##} MB";
 
                 double kilobytes = bytes / 1024.0;
                 if (kilobytes >= 1)
-                    return $"{Math.Round(kilobytes, 2):F2} KB";
+                    return $"{kilobytes:0.##} KB";
 
                 return $"{bytes} B";
             }
@@ -408,11 +453,15 @@ public class Utilities
 
         public static string FormatByteString(float bytes)
         {
-            if (bytes >= 1e9) return $"{(bytes / 1e9):0.##} GB";
-            if (bytes >= 1e6) return $"{(bytes / 1e6):0.##} MB";
-            if (bytes >= 1e3) return $"{(bytes / 1e3):0.##} KB";
+            double byteValue = bytes;
+            if (byteValue >= 1e9)
+                return $"{byteValue / 1e9:0.##} GB";
+            if (byteValue >= 1e6)
+                return $"{byteValue / 1e6:0.##} MB";
+            if (byteValue >= 1e3)
+                return $"{byteValue / 1e3:0.##} KB";
 
-            return $"{bytes} B";
+            return $"{byteValue} B";
         }
 
         public static string GetFilePath(ContentType contentType)
@@ -448,13 +497,11 @@ public class Utilities
             }
         }
 
-        public static bool IsValidImageExtension(string extension)
-        {
-            return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-                || extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase);
-        }
+        public static bool IsValidImageExtension(string extension) =>
+            extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase);
 
         public static void EnsureDirectoryExists(string path)
         {
@@ -521,42 +568,71 @@ public class Utilities
                 Print($"Failed to load image: {ex.Message}", PrintType.Error);
             }
         }
-    }
 
-    public class URL
-    {
-        public static bool IsValid(string url)
+        public static bool IsValidPackageFile(string filePath)  // shoutout LM
         {
-            if (string.IsNullOrWhiteSpace(url)) return false;
+            byte[] ExpectedMagic = { 0x7F, (byte)'C', (byte)'N', (byte)'T' };
 
-            url = Uri.EscapeUriString(url.Trim());
+            if (!File.Exists(filePath))
+                return false;
 
-            Uri uri = null;
-
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
-            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
+            try
             {
-                Print($"Invalid URL format: {url}", PrintType.Default);
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                {
+                    stream.Seek(0, SeekOrigin.Begin);
+                    byte[] header = new byte[ExpectedMagic.Length];
+                    if (stream.Read(header, 0, header.Length) != header.Length)
+                        return false;
+
+                    if (!ExpectedMagic.SequenceEqual(header))
+                        return false;
+                }
+            }
+            catch (IOException)
+            {
                 return false;
             }
 
             return true;
         }
 
-        public static bool IsValidImageType(string url)
+    }
+
+    public class URL
+    {
+        public static bool IsValidURI(string url)
         {
-            return IO.IsValidImageExtension(Path.GetExtension(url));
+            if (File.Exists(url)) return true;
+            if (string.IsNullOrWhiteSpace(url) || string.IsNullOrEmpty(url)) return false;
+
+            url = Uri.EscapeUriString(url.Trim());
+
+            Uri uri;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
+            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
+            {
+                if (!File.Exists(url))
+                {
+                    Print($"Invalid URL format: {url}", PrintType.Error);
+                    return false;
+                }
+            }
+
+            return true;
         }
 
-        public static bool IsValidImage(string url) => !string.IsNullOrEmpty(url) && IsValid(url) && IsValidImageType(url);
+        public static bool IsValidImageType(string url)
+            => IO.IsValidImageExtension(Path.GetExtension(url));
+
+        public static bool IsValidImage(string url) => !string.IsNullOrEmpty(url) && IsValidURI(url) && IsValidImageType(url);
+
     }
 
     public class Menu
     {
         public static bool IsValidMenuItemIndex(int index)
-        {
-            return index >= 0 && index < menuTexts.Length;
-        }
+            => index >= 0 && index < menuTexts.Length;
 
         public static void HighlightMenuItem(int index)
         {
@@ -577,6 +653,7 @@ public class Utilities
             if (IsValidMenuItemIndex(index))
                 menuTexts[index].color = color;
         }
+
     }
 
     public class Store
@@ -596,7 +673,7 @@ public class Utilities
         private static extern bool sceStoreApiLaunchStore(string TitleId);
 
         public static bool CheckForUpdates(string TitleId = "PKGI13337")
-          => sceStoreApiCheckUpdate(TitleId) == UpdateReturns.FoundUpdate;
+            => sceStoreApiCheckUpdate(TitleId) == UpdateReturns.FoundUpdate;
 
         public static void UpdateApplication(string titleId = "PKGI13337")
             => sceStoreApiLaunchStore(titleId);

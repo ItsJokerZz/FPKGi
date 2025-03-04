@@ -1,16 +1,16 @@
 ﻿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
-using static JsonData;
 
 public class Variables
 {
-    public static bool nightly = true;
-    public static float version = 0.87f;
-    public static int build = 4;
-
     public static bool? updateAvailable = null;
     public static float? latestVersion = null;
+
+    public static float version = 0.873f;
+    public static bool nightly = true;
+    public static bool canary = false;
+    public static int buildNumber = 44;
 
     #region Global Variabales
     public static RawImage
@@ -26,48 +26,43 @@ public class Variables
 
     public static JsonData Content;
 
-    public static List<KeyValuePair<int,
-        GameContent>> GameContentAsList;
-
-    public static bool isPopulatedViaWeb = false;
-
     public static string[]
         BackgroundTextObjects =
         {
-            "Version",
-            "Temperature",
-            "ContentSort",
-            "Controls/Main/Circle/Text",
-            "Controls/Main/Triangle/Text",
-            "Controls/Main/Square/Text",
-            "Controls/Main/X/Text",
-            "Controls/Menu/Circle/Text",
-            "Controls/Menu/Triangle/Text",
-            "Controls/Menu/X/Text"
+            "Canvas/Main/Text/Version",
+            "Canvas/Main/Text/Temperature",
+            "Canvas/Main/Text/ContentSort",
+            "Canvas/Main/Images/Controls/Main/Circle/Text",
+            "Canvas/Main/Images/Controls/Main/Triangle/Text",
+            "Canvas/Main/Images/Controls/Main/Square/Text",
+            "Canvas/Main/Images/Controls/Main/X/Text",
+            "Canvas/Main/Images/Controls/Menu/Circle/Text",
+            "Canvas/Main/Images/Controls/Menu/Triangle/Text",
+            "Canvas/Main/Images/Controls/Menu/X/Text"
         },
 
         MenuTextObjects =
         {
-            "FilteringOptions/SortBy/Size",
-            "FilteringOptions/SortBy/Region",
-            "FilteringOptions/SortBy/Name",
-            "FilteringOptions/SortBy/TitleID",
+            "Canvas/Menu/Text/FilteringOptions/SortBy/Size",
+            "Canvas/Menu/Text/FilteringOptions/SortBy/Region",
+            "Canvas/Menu/Text/FilteringOptions/SortBy/Name",
+            "Canvas/Menu/Text/FilteringOptions/SortBy/TitleID",
 
-            "FilteringOptions/Content/Selection",
+            "Canvas/Menu/Text/FilteringOptions/Content/Selection",
 
-            "FilteringOptions/Regions/USA",
-            "FilteringOptions/Regions/Europe",
-            "FilteringOptions/Regions/Japan",
-            "FilteringOptions/Regions/Asia",
+            "Canvas/Menu/Text/FilteringOptions/Regions/USA",
+            "Canvas/Menu/Text/FilteringOptions/Regions/Europe",
+            "Canvas/Menu/Text/FilteringOptions/Regions/Japan",
+            "Canvas/Menu/Text/FilteringOptions/Regions/Asia",
 
-            "UserPreferences/ReloadConfig",
-            "UserPreferences/ChangeSavePath",
-            "UserPreferences/DirectDownload",
-            "UserPreferences/InstallOnceDone",
-            "UserPreferences/DeleteAfterInstall",
-            "UserPreferences/PopulateViaWeb",
-            "UserPreferences/BackgroundMusic",
-            "UserPreferences/ChangeBackground",
+            "Canvas/Menu/Text/UserPreferences/ReloadConfig",
+            "Canvas/Menu/Text/UserPreferences/ChangeSavePath",
+            "Canvas/Menu/Text/UserPreferences/DirectDownload",
+            "Canvas/Menu/Text/UserPreferences/InstallOnceDone",
+            "Canvas/Menu/Text/UserPreferences/DeleteAfterInstall",
+            "Canvas/Menu/Text/UserPreferences/PopulateViaWeb",
+            "Canvas/Menu/Text/UserPreferences/BackgroundMusic",
+            "Canvas/Menu/Text/UserPreferences/ChangeBackground",
         },
 
         sortByOptions = { "Size", "Region",
@@ -131,6 +126,7 @@ public class Variables
         public int sortCriteria;
         public int contentFilter;
         public string[] filteredRegions;
+        public string searchFilter;
         public string background_uri;
         public Texture previousBg;
         public bool directDownload;

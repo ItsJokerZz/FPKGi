@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using static JsonData;
@@ -9,7 +10,8 @@ using static Variables;
 
 public class ContentHandler : MonoBehaviour
 {
-    public static string filter = string.Empty;
+    public static string downloadLink = string.Empty;
+    public static string searchFilter = string.Empty;
     public static int filteredCount = 0;
     public static int removedCount = 0;
     public static int selectedIndex = 0;
@@ -17,9 +19,57 @@ public class ContentHandler : MonoBehaviour
     public static int itemsPerPage = 25;
     public static int currentPage = 0;
 
-    public Text pkgCount;
-    public Text currentInt;
+    public Text pkgCount, currentInt;
     public static PKG currentPkg;
+
+    public static int allCachedCount = 0;
+
+    public static bool? initalCountUpdated = null;
+    public static bool toggleBackToLocal = false;
+
+    public static Dictionary<ContentType, Dictionary<string, GameContent>>
+        contentTypeCache = new Dictionary<ContentType, Dictionary<string, GameContent>>();
+
+    public static Dictionary<string, GameContent>
+        allContentCache = new Dictionary<string, GameContent>();
+    public static Dictionary<string, GameContent>
+        homebrewCombinedCache = new Dictionary<string, GameContent>();
+
+    public static KeyValuePair<string, GameContent> currentContentItem;
+
+    public static Dictionary<string, GameContent> GetCurrentCacheForFilter()
+    {
+        if ((ContentType)contentFilter != ContentType.Config)
+        {
+            if ((ContentType)contentFilter == ContentType.Homebrew)
+                return GetHomebrewCombinedCache();
+            else if ((ContentType)contentFilter == ContentType.ALL)
+                return contentTypeCache[ContentType.ALL];
+            else
+                return contentTypeCache.ContainsKey((ContentType)contentFilter)
+                    ? contentTypeCache[(ContentType)contentFilter]
+                    : new Dictionary<string, GameContent>();
+        }
+
+        return new Dictionary<string, GameContent>();
+    }
+
+    public static Dictionary<string, GameContent> GetHomebrewCombinedCache()
+    {
+        if (homebrewCombinedCache != null && !ControlMenu.reloadTriggered) return homebrewCombinedCache;
+
+        var homebrewContent = contentTypeCache.ContainsKey(ContentType.Homebrew)
+            ? contentTypeCache[ContentType.Homebrew] : new Dictionary<string, GameContent>();
+
+        var emulatorContent = contentTypeCache.ContainsKey(ContentType.Emulators)
+            ? contentTypeCache[ContentType.Emulators] : new Dictionary<string, GameContent>();
+
+        homebrewCombinedCache = homebrewContent.Concat(emulatorContent).ToDictionary(x => x.Key, x => x.Value);
+
+        ControlMenu.reloadTriggered = false;
+
+        return homebrewCombinedCache;
+    }
 
     public static class Filtering
     {
@@ -48,9 +98,9 @@ public class ContentHandler : MonoBehaviour
 
         public static List<KeyValuePair<string, GameContent>> ApplyFilter(List<KeyValuePair<string, GameContent>> itemsList)
         {
-            if (!string.IsNullOrEmpty(filter))
+            if (!string.IsNullOrEmpty(searchFilter))
             {
-                string filterLower = filter.ToLower().Trim();
+                string filterLower = searchFilter.ToLower().Trim();
 
                 var filteredByName = itemsList
                     .Where(item => item.Value.name != null && item.Value.name.ToLower().StartsWith(filterLower))
@@ -70,7 +120,6 @@ public class ContentHandler : MonoBehaviour
             }
 
             itemsList = FilterByRegion(itemsList);
-
             return itemsList;
         }
 
@@ -303,156 +352,257 @@ public class ContentHandler : MonoBehaviour
             if (controlMenu?.scrollbar != null)
                 UI.UpdateScrollbar(controlMenu.scrollbar);
         }
-    }
 
-    private static void UpdateGameContentList(IEnumerable<KeyValuePair<string, GameContent>> sortedItemsList)
-    {
-        GameContentAsList = sortedItemsList
-            .Select((item, index) => new KeyValuePair<int, GameContent>(index, item.Value))
-            .ToList();
-    }
-
-    public static async void UpdateContent(int page)
-    {
-        currentPage = Mathf.Max(page, 0);
-        int startIndex = currentPage * itemsPerPage;
-        
-        Dictionary<string, GameContent> tempData = new Dictionary<string, GameContent>();
-
-        if (contentFilter == (int)ContentType.ALL)
+        public static void UpdateHomebrewContent()
         {
-            var savedData = new Dictionary<string, GameContent>(parsedData);
-            
-            foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
+            homebrewCombinedCache = GetHomebrewCombinedCache();
+
+            parsedData = homebrewCombinedCache;
+
+            var combinedItems = Filtering.FilterByRegion(parsedData.ToList());
+            combinedItems = Filtering.ApplyFilter(combinedItems);
+
+            UI.ChangeText(FindObjectOfType<ContentHandler>()?.pkgCount,
+                $"Content: {combinedItems.Count} [{allCachedCount}]");
+        }
+
+        public static async Task UpdateRegularContent()
+        {
+            if (contentTypeCache.ContainsKey((ContentType)contentFilter)
+                && contentTypeCache[(ContentType)contentFilter] != null)
             {
-                if (type != ContentType.Config && type != ContentType.ALL)
+                parsedData = contentTypeCache[(ContentType)contentFilter];
+            }
+            else
+            {
+                if (await JSON.ParseJSON((ContentType)contentFilter) != 0)
+                    contentTypeCache[(ContentType)contentFilter] =
+                        new Dictionary<string, GameContent>(parsedData);
+            }
+        }
+
+        public static async void UpdateContent(int page)
+        {
+            currentPage = Mathf.Max(page, 0);
+            int startIndex = currentPage * itemsPerPage;
+
+            if (contentFilter != (int)ContentType.Config)
+            {
+                if (contentFilter != (int)ContentType.ALL)
                 {
+                    if (contentFilter == (int)ContentType.Homebrew)
+                        UpdateHomebrewContent();
+                    else
+                        await UpdateRegularContent();
+                }
+                else
+                {
+                    if (contentTypeCache.ContainsKey(ContentType.ALL))
+                        parsedData = contentTypeCache[ContentType.ALL];
+                    else
+                        parsedData = new Dictionary<string, GameContent>();
+                }
+            }
+
+            if ((ContentType)contentFilter != ContentType.Homebrew)
+            {
+                if (!contentTypeCache.ContainsKey((ContentType)contentFilter) ||
+                    contentTypeCache[(ContentType)contentFilter] == null)
+                {
+                    if (await JSON.ParseJSON((ContentType)contentFilter) != 0)
+                        contentTypeCache[(ContentType)contentFilter] = new Dictionary<string, GameContent>(parsedData);
+                }
+                else
+                    parsedData = contentTypeCache[(ContentType)contentFilter];
+            }
+
+            var itemsList = parsedData
+                .Where(item => item.Value != null &&
+                    !string.IsNullOrEmpty(item.Value.title_id) &&
+                    !string.IsNullOrEmpty(item.Value.name) &&
+                    !string.IsNullOrEmpty(item.Value.size)).ToList();
+
+            if ((ContentType)contentFilter == ContentType.ALL ||
+                contentFilter == (int)ContentType.Homebrew)
+                itemsList = Filtering.FilterByRegion(itemsList);
+
+            itemsList = Filtering.ApplyFilter(itemsList);
+
+            filteredCount = itemsList.Count;
+            var sortedItemsList = Filtering.SortItems(itemsList);
+            if (startIndex >= sortedItemsList.Count())
+            {
+                currentPage = Mathf.Max(0, (sortedItemsList.Count() - 1) / itemsPerPage);
+                startIndex = currentPage * itemsPerPage;
+            }
+
+            ClearDisplayedItems();
+            var itemsToDisplay = sortedItemsList.Skip(startIndex).Take(itemsPerPage).ToList();
+            DisplayItems(itemsToDisplay);
+
+            for (int i = itemsToDisplay.Count; i < Content.PKGs.Count; i++)
+            {
+                if (Content.PKGs[i] != null)
+                {
+                    UI.ChangeText(Content.PKGs[i].TitleID, string.Empty);
+                    UI.ChangeText(Content.PKGs[i].Region, string.Empty);
+                    UI.ChangeText(Content.PKGs[i].Title, string.Empty);
+                    UI.ChangeText(Content.PKGs[i].Size, string.Empty);
+                }
+            }
+
+            UpdateScrollbar();
+        }
+
+        public static async void UpdatePkgCount()
+        {
+            bool needUpdate = ControlMenu.reloadTriggered || toggleBackToLocal
+             || (Background.initialized && initalCountUpdated == null);
+
+            if (!needUpdate)
+                return;
+
+            if (initalCountUpdated == null)
+            {
+                toggleBackToLocal = true;
+                initalCountUpdated = true;
+                ControlMenu.reloadTriggered = true;
+            }
+
+            if (toggleBackToLocal)
+            {
+                toggleBackToLocal = false;
+
+                foreach (var key in contentTypeCache.Keys.ToList())
+                    contentTypeCache[key]?.Clear();
+
+                contentTypeCache.Clear();
+                allContentCache.Clear();
+                homebrewCombinedCache.Clear();
+
+                ControlMenu.reloadTriggered = true;
+            }
+
+            if (ControlMenu.reloadTriggered)
+            {
+                ControlMenu.reloadTriggered = false;
+                contentScroll = 0;
+            }
+
+            var contentTypes = Enum.GetValues(typeof(ContentType))
+                                   .Cast<ContentType>()
+                                   .Where(type => type != ContentType.Config && type != ContentType.ALL)
+                                   .ToList();
+
+            ContentType currentType = (ContentType)contentFilter;
+            if (currentType != ContentType.ALL && currentType != ContentType.Config)
+            {
+                if (contentTypes.Remove(currentType))
+                    contentTypes.Add(currentType);
+            }
+
+            if (!contentTypeCache.ContainsKey((ContentType)contentFilter) || contentTypeCache[(ContentType)contentFilter] == null)
+            {
+                foreach (var type in contentTypes)
+                {
+                    if (type == currentType)
+                        continue;
+
+                    if (contentTypeCache.ContainsKey(type) && contentTypeCache[type] != null)
+                        continue;
+
                     parsedData.Clear();
-                    int result = await JSON.ParseJSON(type, false);
-                    if (result != 0)
+
+                    if (await JSON.ParseJSON(type) != 0)
+                        contentTypeCache[type] = new Dictionary<string, GameContent>(parsedData);
+                }
+
+                parsedData.Clear();
+
+                if (await JSON.ParseJSON(currentType) != 0)
+                    contentTypeCache[currentType] = new Dictionary<string, GameContent>(parsedData);
+            }
+
+            allContentCache.Clear();
+
+            foreach (var type in contentTypes)
+            {
+                if (contentTypeCache.ContainsKey(type) && contentTypeCache[type] != null)
+                {
+                    foreach (var kv in contentTypeCache[type])
                     {
-                        foreach (var kvp in parsedData)
-                        {
-                            string key = kvp.Key;
-                            if (tempData.ContainsKey(key))
-                                key = $"{key}_{type}";
-                            tempData[key] = kvp.Value;
-                        }
+                        if (!allContentCache.ContainsKey(kv.Key))
+                            allContentCache.Add(kv.Key, kv.Value);
                     }
                 }
             }
-            
-            parsedData = tempData;
-        }
-        else if (contentFilter == (int)ContentType.Homebrew)
-        {
-            parsedData.Clear();
-            await JSON.ParseJSON(ContentType.Homebrew, false);
-            foreach (var kvp in parsedData)
-                tempData[kvp.Key] = kvp.Value;
 
-            parsedData.Clear();
-            await JSON.ParseJSON(ContentType.Emulators, false);
-            foreach (var kvp in parsedData)
+            contentTypeCache[ContentType.ALL] = new Dictionary<string, GameContent>(allContentCache);
+
+            UpdateContent(currentPage);
+
+            Dictionary<string, GameContent> currentCache = GetCurrentCacheForFilter();
+            var currentItems = currentCache
+                .Where(item => item.Value != null &&
+                               !string.IsNullOrEmpty(item.Value.title_id) &&
+                               !string.IsNullOrEmpty(item.Value.name) &&
+                               !string.IsNullOrEmpty(item.Value.size))
+                .ToList();
+
+            if ((ContentType)contentFilter == ContentType.ALL
+                || (ContentType)contentFilter == ContentType.Homebrew)
+                currentItems = Filtering.FilterByRegion(currentItems);
+
+            currentItems = Filtering.ApplyFilter(currentItems);
+
+            int currentFilteredCount = currentItems.Count;
+            int currentPageCount = Mathf.Min(itemsPerPage,
+                currentFilteredCount - currentPage * itemsPerPage);
+
+            int fullCount = contentTypeCache.ContainsKey(ContentType.ALL)
+                ? contentTypeCache[ContentType.ALL]
+                      .Where(item => item.Value != null &&
+                                     !string.IsNullOrEmpty(item.Value.title_id) &&
+                                     !string.IsNullOrEmpty(item.Value.name) &&
+                                     !string.IsNullOrEmpty(item.Value.size))
+                      .Count() : 0;
+
+            int currentCount = contentTypeCache.ContainsKey(currentType)
+                ? contentTypeCache[currentType]
+                      .Where(item => item.Value != null &&
+                                     !string.IsNullOrEmpty(item.Value.title_id) &&
+                                     !string.IsNullOrEmpty(item.Value.name) &&
+                                     !string.IsNullOrEmpty(item.Value.size))
+                      .Count() : 0;
+
+            var contentHandler = FindObjectOfType<ContentHandler>();
+
+            if ((ContentType)contentFilter == ContentType.ALL)
             {
-                string key = kvp.Key;
-                if (tempData.ContainsKey(key))
-                    key = $"{key}_emulator";
-                tempData[key] = kvp.Value;
+                int filteredAllCount = Filtering.FilterByRegion(contentTypeCache[ContentType.ALL].ToList())
+                    .Where(item => item.Value != null &&
+                                   !string.IsNullOrEmpty(item.Value.title_id) &&
+                                   !string.IsNullOrEmpty(item.Value.name) &&
+                                   !string.IsNullOrEmpty(item.Value.size))
+                    .Count();
+
+                int leftValue = Mathf.Clamp(filteredAllCount - removedCount, 0, filteredAllCount - removedCount);
+
+                UI.ChangeText(contentHandler?.pkgCount, $"Content: {leftValue} [{fullCount}]");
             }
-            
-            parsedData = tempData;
-        }
-        else
-        {
-            parsedData.Clear();
-            await JSON.ParseJSON((ContentType)contentFilter, false);
+            else if ((ContentType)contentFilter != ContentType.Homebrew)
+                UI.ChangeText(contentHandler?.pkgCount, $"Content: {currentCount} [{fullCount}]");
+
+            allCachedCount = fullCount;
         }
 
-        var itemsList = parsedData
-            .Where(item => item.Value != null &&
-                           !string.IsNullOrEmpty(item.Value.title_id) &&
-                           !string.IsNullOrEmpty(item.Value.name) &&
-                           !string.IsNullOrEmpty(item.Value.size))
-            .ToList();
-
-        if (contentFilter == (int)ContentType.ALL || contentFilter == (int)ContentType.Homebrew)
-            itemsList = Filtering.FilterByRegion(itemsList);
-
-        itemsList = Filtering.ApplyFilter(itemsList);
-
-        int filteredOutCount = parsedData.Count - itemsList.Count;
-        filteredCount = itemsList.Count;
-
-        var sortedItemsList = Filtering.SortItems(itemsList);
-
-        if (startIndex >= sortedItemsList.Count())
+        public static void HighlightCurrentPkg()
         {
-            currentPage = Mathf.Max(0, (sortedItemsList.Count() - 1) / itemsPerPage);
-            startIndex = currentPage * itemsPerPage;
-        }
+            if (Content.PKGs == null || Content.PKGs.Count == 0) return;
 
-        UIManagement.ClearDisplayedItems();
+            int pageIndex = contentScroll % itemsPerPage;
+            currentPkg = Content.PKGs[pageIndex];
 
-        var itemsToDisplay = sortedItemsList.Skip(startIndex).Take(itemsPerPage).ToList();
-        UIManagement.DisplayItems(itemsToDisplay);
-
-        int displayedItemCount = itemsToDisplay.Count;
-        for (int i = displayedItemCount; i < Content.PKGs.Count; i++)
-        {
-            var pkg = Content.PKGs[i];
-            if (pkg != null)
-            {
-                UI.ChangeText(pkg.TitleID, string.Empty);
-                UI.ChangeText(pkg.Region, string.Empty);
-                UI.ChangeText(pkg.Title, string.Empty);
-                UI.ChangeText(pkg.Size, string.Empty);
-            }
-        }
-
-        UIManagement.UpdateScrollbar();
-        UpdateGameContentList(sortedItemsList);
-    }
-
-    public async void UpdatePkgCount()
-    {
-        int totalPKGs = 0;
-
-        var contentTypes = Enum.GetValues(typeof(ContentType))
-            .Cast<ContentType>()
-            .Where(type => type != ContentType.Config && type != ContentType.ALL)
-            .ToList();
-
-        foreach (var type in contentTypes)
-        {
-            parsedData.Clear();
-            await JSON.ParseJSON(type);
-            totalPKGs += parsedData.Count;
-        }
-
-        filteredCount = Mathf.Max(filteredCount, 0);
-        Filtering.RemoveInvalidItems(ref parsedData);
-        await JSON.ParseJSON((ContentType)contentFilter);
-
-        int clampPkgCount = Mathf.Clamp(filteredCount - removedCount, 0, filteredCount - removedCount);
-        var text = $"Content: {clampPkgCount} ({totalPKGs - removedCount})";
-        if (pkgCount.text != text) UI.ChangeText(pkgCount, text);
-
-        int currentPKG = 0;
-
-        if (clampPkgCount > 0)
-            currentPKG = Mathf.Clamp(contentScroll + 1, 0, clampPkgCount);
-
-        UI.ChangeText(currentInt, $"{currentPKG} / {clampPkgCount}");
-
-        currentInt.enabled = !(currentPKG == 0 && clampPkgCount == 0);
-    }
-
-    public static void HighlightCurrentPkg()
-    {
-        if (Content.PKGs != null && Content.PKGs.Count > 0)
-        {
-            currentPkg = Content.PKGs[contentScroll % itemsPerPage];
             if (currentPkg != null)
             {
                 currentPkg.TitleID.color = blueish;
@@ -471,13 +621,44 @@ public class ContentHandler : MonoBehaviour
                     pkg.Size.color = Color.white;
                 }
             }
+
+            UpdateContent(contentScroll / itemsPerPage);
+            UpdatePkgCount();
+
+            Dictionary<string, GameContent> currentCache = (ContentType)contentFilter == ContentType.Homebrew
+            ? GetHomebrewCombinedCache() : (ContentType)contentFilter == ContentType.ALL
+                ? (contentTypeCache.ContainsKey(ContentType.ALL) ? contentTypeCache[ContentType.ALL] :
+                new Dictionary<string, GameContent>()) : (ContentType)contentFilter == ContentType.Config
+                    ? parsedData : (contentTypeCache.ContainsKey((ContentType)contentFilter) ?
+                    contentTypeCache[(ContentType)contentFilter] : new Dictionary<string, GameContent>());
+
+
+            if (currentCache == null)
+                return;
+
+            var itemsList = currentCache.Where(item => item.Value != null &&
+                               !string.IsNullOrEmpty(item.Value.title_id) &&
+                               !string.IsNullOrEmpty(item.Value.name) &&
+                               !string.IsNullOrEmpty(item.Value.size)).ToList();
+
+            if ((ContentType)contentFilter == ContentType.ALL ||
+                (ContentType)contentFilter == ContentType.Homebrew)
+                itemsList = Filtering.FilterByRegion(itemsList);
+
+            itemsList = Filtering.ApplyFilter(itemsList);
+            var sortedItemsList = Filtering.SortItems(itemsList).ToList();
+
+            if (sortedItemsList.Count == 0)
+                return;
+
+            int startIndex = currentPage * itemsPerPage,
+                selectedIndex = startIndex + pageIndex;
+
+            if (selectedIndex < 0 || selectedIndex >= sortedItemsList.Count)
+                return;
+
+            currentContentItem = sortedItemsList[selectedIndex];
         }
-
-        UpdateContent(contentScroll / itemsPerPage);
-
-        ContentHandler contentHandler =
-            FindObjectOfType<ContentHandler>();
-
-        contentHandler?.UpdatePkgCount();
     }
+
 }

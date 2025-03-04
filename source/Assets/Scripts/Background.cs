@@ -2,6 +2,8 @@
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityOrbisBridge;
@@ -9,69 +11,30 @@ using static JsonData;
 using static UOBWrapper;
 using static Utilities;
 using static Variables;
-using System.Reflection;
 
 public class Background : MonoBehaviour
 {
     [SerializeField]
-    private RawImage
-        background, coverImage;
+    private RawImage background, coverImage;
 
     [SerializeField]
-    private Text[]
-        mainTexts = { };
-
-    public Text freeSpace;
+    private Text[] mainTexts = { };
 
     [Header("Content Data")]
     public RectTransform textTransform;
 
     public GameObject prefab;
 
-    [SerializeField] private JsonData Content;
+    [SerializeField]
+    private JsonData Content;
 
-    private const float Spacing = 37.50f;
+    public Text freeSpace;
+
+    private const float Spacing = 36.50f;
     private const float Offset = -20.00f;
 
-    private void OnApplicationQuit()
-        => SaveConfiguration();
-
-    private void InitializeContent()
-    {
-        Variables.Content = Content;
-        Transform pkgsTransform = GameObject.Find("PKGs")?.transform;
-
-        if (pkgsTransform != null)
-        {
-            Transform textTransform = pkgsTransform.Find("Text");
-            if (textTransform != null)
-            {
-                Content.PKGs.Clear();
-                Vector2 startPosition = new Vector2(0, ContentHandler.itemsPerPage * Spacing / 2);
-
-                for (int i = 0; i < ContentHandler.itemsPerPage; i++)
-                {
-                    Vector2 position = startPosition - new Vector2(0, i * Spacing - Offset);
-                    GameObject newPrefab = Instantiate(prefab, textTransform);
-                    newPrefab.GetComponent<RectTransform>().anchoredPosition = position;
-                    newPrefab.name = $"PKG{i + 1}";
-
-                    Transform pkgTransform = textTransform.Find($"PKG{i + 1}");
-                    if (pkgTransform != null)
-                    {
-                        Content.PKGs.Add(new PKG
-                        {
-                            TitleID = pkgTransform.Find("TitleID")?.GetComponent<Text>(),
-                            Region = pkgTransform.Find("Region")?.GetComponent<Text>(),
-                            Downloaded = pkgTransform.Find("Downloaded")?.GetComponent<Text>(),
-                            Title = pkgTransform.Find("Title")?.GetComponent<Text>(),
-                            Size = pkgTransform.Find("Size")?.GetComponent<Text>()
-                        });
-                    }
-                }
-            }
-        }
-    }
+    public static bool initialized = false;
+    public static bool updateChecked = false;
 
     public static void SaveConfiguration()
     {
@@ -206,38 +169,67 @@ public class Background : MonoBehaviour
         File.WriteAllText(configPath, jsonString);
     }
 
-    public async void HandleConfiguration()
+    public static void HandleConfiguration()
     {
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
-
         string configPath = Path.Combine(directoryPath, "config.json");
-
         if (!File.Exists(configPath))
         {
-            Print("CONFIG DOESN'T EXIST! CREATING...", PrintType.Warning);
-            await JSON.ParseJSON(ContentType.Config);
+            Print(true, PrintType.Warning, "CONFIG DOESN'T EXIST! CREATING...");
             SaveConfiguration();
             return;
         }
 
+        #region Resolves issues present in version v0.81 and prior
+        string homebrewPath = IO.GetFilePath(ContentType.Homebrew);
+        if (File.Exists(homebrewPath))
+        {
+            string homebrewJson = File.ReadAllText(homebrewPath);
+            var content = JsonConvert.DeserializeObject<Games>(homebrewJson);
+            var fpkgiEntry = content.DATA.FirstOrDefault(entry => entry.Value.title_id == "FPKGI13337");
+            if (fpkgiEntry.Value != null)
+            {
+                var oldKey = fpkgiEntry.Key;
+                var gameContent = fpkgiEntry.Value;
+                gameContent.title_id = "PKGI13337";
+
+                content.DATA.Remove(oldKey);
+                content.DATA[oldKey] = gameContent;
+
+                string updatedJson = JsonConvert.SerializeObject(content, Formatting.Indented);
+                File.WriteAllText(homebrewPath, updatedJson);
+            }
+        }
+        #endregion
+
         string jsonContent = File.ReadAllText(configPath);
         var config = JsonConvert.DeserializeObject<Config>(jsonContent);
 
-        if (config.preferences.content_urls != null)
+        if (config.preferences == null)
         {
-            foreach (var key in Variables.ContentURLs.Keys.ToList())
-            {
-                var configValue = config.preferences.content_urls.GetType()
-                    .GetProperty(key, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
-                    .GetValue(config.preferences.content_urls) as string;
-                
-                if (!string.IsNullOrEmpty(configValue))
-                {
-                    Variables.ContentURLs[key] = configValue;
-                }
-            }
+            Print(true, PrintType.Error, "Config preferences are null.");
+            return;
+        }
+
+        if (config.preferences.content_urls == null)
+        {
+            Print(true, PrintType.Error, "Content URLs in preferences are null.");
+            return;
+        }
+
+        foreach (var key in Variables.ContentURLs.Keys.ToList())
+        {
+            var configValue = config.preferences.content_urls.GetType()
+                .GetProperty(key, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
+                .GetValue(config.preferences.content_urls) as string;
+
+            if (!string.IsNullOrEmpty(configValue))
+                Variables.ContentURLs[key] = configValue;
+        }
+
+        if (config.filtering == null)
+        {
+            Print(true, PrintType.Error, "Filtering in config is null.");
+            return;
         }
 
         string contentFilterStr = config.filtering.content?.ToLower();
@@ -306,7 +298,7 @@ public class Background : MonoBehaviour
 
         ascending = config.filtering.sort?.ascending ?? ascending;
         filteredRegions = config.filtering.regions?.Distinct().ToArray() ?? filteredRegions;
-        
+
         directDownload = config.preferences.downloads?.directDownload ?? directDownload;
         downloadPath = config.preferences.downloads?.downloadPath ?? downloadPath;
         installAfter = config.preferences.downloads?.installAfter ?? installAfter;
@@ -316,28 +308,148 @@ public class Background : MonoBehaviour
         backgroundMusic = config.preferences.application?.backgroundMusic ?? backgroundMusic;
         populateViaWeb = config.preferences.application?.populateViaWeb ?? populateViaWeb;
 
+        pS.contentFilter = contentFilter;
+        pS.searchFilter = ContentHandler.searchFilter;
+        pS.populateViaWeb = populateViaWeb;
+        pS.filteredRegions = filteredRegions?.ToArray();
+        pS.sortCriteria = sortCriteria;
+        pS.ascending = ascending;
+
+        FindObjectOfType<Background>()?.LoadCustomBackground();
+
         SaveConfiguration();
-
-        await JSON.ParseJSON((ContentType)contentFilter);
-        ContentHandler.UpdateContent(0);
-
-        if (URL.IsValidImage(background_uri))
-            SetImageFromURL(background_uri, ref background);
-        else
-            IO.LoadImage(background_uri, ref background);
     }
 
-    public static async void CheckForUpdates()
+    public void LoadCustomBackground()
     {
-        if (updateAvailable == null && latestVersion == null)
+        if (!File.Exists(background_uri))
         {
-            float found;
+            if (URL.IsValidImage(background_uri))
+                SetImageFromURL(background_uri, ref background);
+        }
+        else IO.LoadImage(background_uri, ref background);
+    }
 
-            updateAvailable = UnityEngine.Application.platform != RuntimePlatform.PS4 || Store.CheckForUpdates();
-            string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
+    private void OnApplicationQuit() => SaveConfiguration();
 
-            if (float.TryParse(result, out found))
-                latestVersion = found;
+    private void InitializePkgContent()
+    {
+        Variables.Content = Content;
+        Transform pkgsTransform = GameObject.Find("PKGs")?.transform;
+
+        if (pkgsTransform != null)
+        {
+            Transform textTransform = pkgsTransform.Find("Text");
+            if (textTransform != null)
+            {
+                Content.PKGs.Clear();
+                Vector2 startPosition = new Vector2(0, ContentHandler.itemsPerPage * Spacing / 2);
+
+                for (int i = 0; i < ContentHandler.itemsPerPage; i++)
+                {
+                    Vector2 position = startPosition - new Vector2(0, i * Spacing - Offset);
+                    GameObject newPrefab = Instantiate(prefab, textTransform);
+                    newPrefab.GetComponent<RectTransform>().anchoredPosition = position;
+                    newPrefab.name = $"PKG{i + 1}";
+
+                    Transform pkgTransform = textTransform.Find($"PKG{i + 1}");
+                    if (pkgTransform != null)
+                    {
+                        Content.PKGs.Add(new PKG
+                        {
+                            TitleID = pkgTransform.Find("TitleID")?.GetComponent<Text>(),
+                            Region = pkgTransform.Find("Region")?.GetComponent<Text>(),
+                            Downloaded = pkgTransform.Find("Downloaded")?.GetComponent<Text>(),
+                            Title = pkgTransform.Find("Title")?.GetComponent<Text>(),
+                            Size = pkgTransform.Find("Size")?.GetComponent<Text>()
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    private void Awake()
+    {
+        mainTexts = new Text[BackgroundTextObjects.Length];
+
+        for (int i = 0; i < mainTexts.Length; i++)
+        {
+            mainTexts[i] = UI.FindInactiveObjectsByPath(BackgroundTextObjects[i])?.GetComponent<Text>();
+
+            if (mainTexts[i] == null)
+                Print(true, PrintType.Error, $"Text component not found for path: {BackgroundTextObjects[i]}");
+        }
+
+        Variables.mainTexts = mainTexts;
+        Variables.background = background; // might not be needed?
+        Variables.coverImage = coverImage;
+
+        var state = nightly && !canary ? "nightly" : (canary ? "canary" : "release");
+
+        UI.ChangeText(mainTexts, 0, $"v{UI.FormatVersion(version)}-{state} [build {buildNumber:000}]");
+
+        if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+        {
+            QualitySettings.vSyncCount = 1;
+            UnityEngine.Application.targetFrameRate = 60;
+
+            // language = Marshal.PtrToStringAnsi(UOB.GetSystemLanguage());
+
+            languageID = UOB.GetSystemLanguageID();
+
+            UOB.InitializeNativeDialogs();
+
+            // UOB.MountRootDirectories();
+        }
+        else if (UnityEngine.Application.platform == RuntimePlatform.WindowsEditor)
+        {
+            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
+
+            QualitySettings.vSyncCount = 0;
+        }
+
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/PkgCount")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.SetActive(true);
+
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
+
+        HandleConfiguration();
+        InitializePkgContent();
+
+        initialized = true;
+    }
+
+    public static async Task<bool> CheckForAppUpdates()
+    {
+        if (!updateChecked)
+        {
+            if (updateAvailable == null)
+                updateAvailable = UnityEngine.Application.platform != RuntimePlatform.PS4 || Store.CheckForUpdates();
+
+            if (latestVersion == null)
+            {
+                double found;
+                string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
+
+                if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+                    UOB.EnterSandbox();
+
+                if (result.Contains("No valid version found in any release."))
+                    latestVersion = version;
+                else
+                {
+                    if (double.TryParse(result, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out found))
+                        latestVersion = (float)found;
+                }
+
+            }
+
+            updateChecked = true;
         }
 
         if (version < latestVersion || updateAvailable == true)
@@ -348,70 +460,68 @@ public class Background : MonoBehaviour
             GameObject.Find("Canvas/Main/Images/Controls/Close")?.SetActive(true);
             UI.FindInactiveObjectsByPath("Canvas/Update")?.SetActive(true);
 
-            var textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
-            if (textComponent != null)
-                textComponent.text = $"Latest Version: {latestVersion}\nCurrent Version: {version}";
+            Text textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
+                textComponent.text = $"Latest Version: {UI.FormatVersion(latestVersion)}\nCurrent Version: {UI.FormatVersion(version)}";
         }
+
+        return true;
     }
 
     private IEnumerator UpdateDisplayInfo()
     {
-        while (UnityEngine.Application.platform == RuntimePlatform.PS4)
+        float? temperature = null;
+        string freeSpace = string.Empty;
+
+        while (true)
         {
-            UOB.BreakFromSandbox();
+            if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+                UOB.BreakFromSandbox();
 
-            for (int i = 0; i < mainTexts.Length; i++)
-                if (mainTexts.Length != i)
-                    mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
+            var freeSpaceText = UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.GetComponent<Text>();
+            var temperatureText = UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.GetComponent<Text>();
+           
+            if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+            {
+                 temperature = UOB.GetTemperature(UOB.Temperature.CPU);
+                 freeSpace = UOB.GetDiskInfo(UOB.DiskInfo.Free);
+            }
 
-            UpdateDiskInfo(freeSpace, UOB.DiskInfo.Free);
-            UpdateTemperature(mainTexts[1],
-                new Color32(119, 221, 119, 255),
-                new Color32(255, 237, 0, 255),
-                new Color32(156, 82, 82, 255),
-                UOB.Temperature.CPU, 55f, 70f);
+            bool freeSpaceChanged = freeSpaceText != null && freeSpaceText.text != freeSpace;
+            bool temperatureChanged = temperatureText != null && temperatureText.text != temperature.ToString();
+
+            if ((freeSpaceText != null && freeSpaceChanged) || (temperatureText != null && temperatureChanged))
+            {
+                if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+                {
+                    UpdateDiskInfo(freeSpaceText, UOB.DiskInfo.Free);
+                    UpdateTemperature(temperatureText,
+                        new Color32(119, 221, 119, 255),
+                        new Color32(255, 237, 0, 255),
+                        new Color32(156, 82, 82, 255),
+                        UOB.Temperature.CPU, 55f, 70f);
+                }
+                else
+                {
+                    if (freeSpaceText != null)
+                        freeSpaceText.text = "Not Available";
+                    if (temperatureText != null)
+                        temperatureText.text = "Not Available";
+                }
+            }
 
             yield return new WaitForSeconds(1f);
         }
     }
 
-    private void InitializeApplication()
+    private IEnumerator Start()
     {
-        var state = nightly ? "nightly" : "release";
+        while (!initialized) yield return null;
 
-        mainTexts = new Text[BackgroundTextObjects.Length];
-        for (int i = 0; i < mainTexts.Length; i++)
-            mainTexts[i] = UI.FindTextComponent(BackgroundTextObjects[i]);
+        yield return CheckForAppUpdates();
 
-        Variables.mainTexts = mainTexts;
-        Variables.background = background;
-        Variables.coverImage = coverImage;
-
-        if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-        {
-            QualitySettings.vSyncCount = 1;
-            UnityEngine.Application.targetFrameRate = 60;
-            // language = Marshal.PtrToStringAnsi(UOB.GetSystemLanguage());
-            languageID = UOB.GetSystemLanguageID();
-            UOB.InitializeNativeDialogs();
-        }
-        else if (UnityEngine.Application.platform == RuntimePlatform.WindowsEditor)
-        {
-            QualitySettings.vSyncCount = 0;
-            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
-        }
-
-        UI.ChangeText(mainTexts, 0, $"v{version:0.00}-{state} [build {build:000}]");
-
-        InitializeContent();
-        HandleConfiguration();
-
-        CheckForUpdates();
+        while (!updateChecked) yield return null;
 
         StartCoroutine(UpdateDisplayInfo());
     }
-
-    private void Start()
-       => InitializeApplication();
 
 }

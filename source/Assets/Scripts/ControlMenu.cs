@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityOrbisBridge;
@@ -47,88 +46,33 @@ public class ControlMenu : MonoBehaviour
     #region Variables
     private AudioSource audioSource;
 
-    private bool menuLoaded = false,
-      downloadCanvasWasActive = false,
-      isDownloading = false;
+    private bool
+        menuLoaded = false,
+        downloadCanvasWasActive = false,
+        isDownloading = false;
 
-    private Coroutine initializeCoroutine;
+    public static bool reloadTriggered = false;
+
     private Coroutine scrollCoroutine;
     private Coroutine downloadCoroutine;
 
     #endregion
 
-    #region Unity Methods
-    private void Start()
+    #region Coroutine Handling
+    private IEnumerator InitializeCoroutine()
     {
+        while (!initialized) yield return null; // not really needed
+
         audioSource = GetComponent<AudioSource>();
+
         if (backgroundMusic) audioSource.Play();
 
-        currentPkg = Content.PKGs[contentScroll];
-
-        initializeCoroutine = StartCoroutine(InitializeMenuCoroutine());
-
-        HighlightCurrentPkg();
-
-        if (contentFilter == (int)ContentType.ALL)
-            StartCoroutine(InitializeJSON());
-    }
-
-    private IEnumerator InitializeJSON()
-    {
-        var task = JSON.ParseJSON((ContentType)contentFilter);
-        yield return new WaitUntil(() => task.IsCompleted);
-
-        if (task.Result == 0)
-            UIManagement.ClearDisplayedItems();
-
-        HighlightCurrentPkg();
-    }
-
-    private void Update()
-    {
-        HandleUserInput();
-
-        if (cooldownTimer > 0) cooldownTimer =
-          Mathf.Clamp(cooldownTimer - Time.deltaTime, 0, inputCooldown);
-
-        UI.ChangeText(mainTexts, 2, $"{contentOptions[contentFilter]}");
-    }
-
-    #endregion
-
-    #region Coroutine Handling
-    private IEnumerator InitializeMenuCoroutine()
-    {
-        while (!menuCanvas.activeSelf) yield return null;
+        while (!menuCanvas.activeSelf) yield return null; // shouldnt be needed either tbh
 
         Variables.menuCanvas = menuCanvas; // global def. can remove (used to view in editor)
         Variables.menuControls = menuControls; // global def. can remove (used to view in editor)
 
-        InitializeMenuItems();
-
-        Menu.HighlightMenuItem(selectedIndex);
-
-        UI.UpdateScrollbar(scrollbar);
-
-        UI.ChangeText(menuTexts, 4, $"> {contentOptions[contentFilter]}");
-
-        if (menuTexts[4] != null && menuTexts[4].text.Contains("^"))
-            UI.ChangeText(menuTexts, 4, $"v {sortByOptions[sortCriteria]}");
-        else if (menuTexts[4] != null && menuTexts[4].text.Contains("v"))
-            UI.ChangeText(menuTexts, 4, $"^ {sortByOptions[sortCriteria]}");
-
-        if (filteredRegions.Contains("USA")) ToggleRegionOption(5, "USA");
-        if (filteredRegions.Contains("Europe")) ToggleRegionOption(6, "Europe");
-        if (filteredRegions.Contains("Japan")) ToggleRegionOption(7, "Japan");
-        if (filteredRegions.Contains("Asia")) ToggleRegionOption(8, "Asia");
-
-        UI.ChangeText(menuTexts, 11, directDownload ? $"> Direct Download" : $"> Back. Download");
-        UI.ChangeText(menuTexts, 12, installAfter ? $"x Install Once Done" : $"o Install Once Done");
-        UI.ChangeText(menuTexts, 13, deleteAfter ? $"x Delete After Install" : $"o Delete After Install");
-        UI.ChangeText(menuTexts, 14, populateViaWeb ? $"x Populate Via Web" : $"o Populate Via Web");
-        UI.ChangeText(menuTexts, 15, backgroundMusic ? $"x Background Music" : $"o Background Music");
-
-        StopCoroutine(initializeCoroutine);
+        UpdateSettingsOptions();
     }
 
     private void InitializeMenuItems()
@@ -136,27 +80,28 @@ public class ControlMenu : MonoBehaviour
         menuTexts = new Text[MenuTextObjects.Length];
 
         for (int i = 0; i < menuTexts.Length; i++)
-            menuTexts[i] = UI.FindTextComponent(MenuTextObjects[i]);
+        {
+            menuTexts[i] = UI.FindInactiveObjectsByPath(MenuTextObjects[i])?.GetComponent<Text>();
+
+            if (menuTexts[i] == null)
+                Print(true, PrintType.Error, $"Text component not found for path: {MenuTextObjects[i]}");
+        }
     }
 
     private void ResetDownloadState()
     {
-        isDownloading = false;
         downloadCanvasWasActive = false;
 
         if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-        {
-            UOB.CancelDownload();
-            System.Threading.Thread.Sleep(250);
             UOB.ResetDownloadVars();
-            System.Threading.Thread.Sleep(250);
-        }
 
         if (downloadCoroutine != null)
         {
             StopCoroutine(downloadCoroutine);
             downloadCoroutine = null;
         }
+
+        isDownloading = false;
 
         ShowUIState(null, mainControls);
 
@@ -176,267 +121,148 @@ public class ControlMenu : MonoBehaviour
 
     private IEnumerator UpdateDownloadProgress()
     {
+        bool hasCompleted = false;
+        bool errorOccurred = false;
+        string progressValue = string.Empty;
+        string fileSizeBytes = "0";
+        string downloadBytes = "0";
+        string progress = "???";
+        string speed = FormatSpeed(0);
+        float lastUpdateTime = Time.time;
+        float downloadStartTime = Time.time;
+        float updateInterval = 0.5f;
+        float minUpdateInterval = 0.2f;
+        float maxUpdateInterval = 1.5f;
+        float smoothedDownloadSpeed = 0f;
+        float ewmaAlpha = 0.25f;
+
         if (UnityEngine.Application.platform == RuntimePlatform.PS4)
             UOB.ResetDownloadVars();
 
         isDownloading = true;
 
-        Transform textTransform = downloadCanvas.transform.Find("Text");
-        Text title = textTransform.Find("Title")?.GetComponent<Text>();
-        Text info = textTransform.Find("Info")?.GetComponent<Text>();
-
-        if (UnityEngine.Application.platform != RuntimePlatform.PS4)
+        while (isDownloading && !hasCompleted)
         {
-            ShowUIState(downloadCanvas, downloadControls);
-
-            if (title != null)
-                UI.ChangeText(title, GameContentAsList[contentScroll].Value.name);
-            if (info != null)
-                UI.ChangeText(info,
-                    "Download Speed: 0 MB/s\n" +
-                    "Remaining Time: N/A\n\n\n" +
-                    "Elapsed Download Time: 0s\n" +
-                    "Downloaded: 0 MB / 0 MB (0%)");
-
-            while (isDownloading)
+            if (UnityEngine.Application.platform == RuntimePlatform.PS4)
             {
-                if (!downloadCanvas.activeSelf)
+                if (UOB.HasDownloadErrorOccured())
                 {
-                    isDownloading = false;
-                    break;
-                }
-                yield return null;
-            }
-
-            ResetDownloadState();
-            yield break;
-        }
-
-        string lastDownloadBytes = "";
-        string lastFileSizeBytes = "";
-        float downloadStartTime = Time.time;
-        float lastUpdateTime = Time.time;
-        float lastDownloadedBytes = 0;
-        float smoothedDownloadSpeed;
-        float updateInterval = 1.0f;
-
-        List<float> downloadSpeeds = new List<float>();
-        int maxSpeedHistory = 5;
-
-        if (!parsedData.ContainsKey(parsedData.Keys.ElementAt(contentScroll)))
-        {
-            Print("Invalid package data", PrintType.Warning);
-            ResetDownloadState();
-            yield break;
-        }
-
-        while (isDownloading)
-        {
-            if (UOB.GetDownloadError() == -1 || UOB.GetDownloadError() == 404)
-            {
-                Print($"Download error ({UOB.GetDownloadError()})", PrintType.Warning);
-                ResetDownloadState();
-                yield break;
-            }
-
-            string downloadBytes = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("downloaded"));
-            string fileSizeBytes = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("filesize"));
-            string progress = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("progress"));
-
-            if (UOB.GetDownloadError() == 200)
-            {
-                long currentBytes;
-                if (long.TryParse(downloadBytes, out currentBytes) && currentBytes < 20971520)
-                {
-                    Print($"Invalid download size: {IO.FormatByteString(currentBytes)}", PrintType.Warning);
-                    ResetDownloadState();
-                    yield break;
-                }
-            }
-
-            if (downloadBytes == "0" && progress == "0" && UOB.GetDownloadError() == 200)
-            {
-                ResetDownloadState();
-                yield break;
-            }
-
-            if (string.IsNullOrEmpty(downloadBytes) || string.IsNullOrEmpty(fileSizeBytes) || string.IsNullOrEmpty(progress))
-            {
-                if (UOB.GetDownloadError() == 200)
-                {
-                    Print("Download reported success but received invalid data", PrintType.Warning);
-                    ResetDownloadState();
-                    yield break;
-                }
-                yield return null;
-                continue;
-            }
-
-            if (downloadBytes != lastDownloadBytes || fileSizeBytes != lastFileSizeBytes)
-            {
-                float elapsedTime = Time.time - lastUpdateTime;
-
-                if (elapsedTime >= updateInterval)
-                {
-                    long downloadedBytes, totalFileSizeBytes;
-
-                    if (!long.TryParse(downloadBytes, out downloadedBytes) || !long.TryParse(fileSizeBytes, out totalFileSizeBytes))
-                    {
-                        ResetDownloadState();
-                        yield break;
-                    }
-
-                    UI.ChangeText(title, GameContentAsList[contentScroll].Value.name);
-
-                    float downloadSpeed = (downloadedBytes - lastDownloadedBytes) / elapsedTime;
-                    downloadSpeeds.Add(downloadSpeed);
-                    if (downloadSpeeds.Count > maxSpeedHistory) downloadSpeeds.RemoveAt(0);
-
-                    smoothedDownloadSpeed = downloadSpeeds.Count > 0 ?
-                        downloadSpeeds.Average() * 0.7f + downloadSpeed * 0.3f :
-                        downloadSpeed;
-
-                    if (smoothedDownloadSpeed <= 0) smoothedDownloadSpeed = downloadSpeed;
-
-                    float remainingBytes = totalFileSizeBytes - downloadedBytes;
-                    float estimatedTime = smoothedDownloadSpeed > 1024 ?
-                        remainingBytes / smoothedDownloadSpeed :
-                        float.MaxValue;
-                    estimatedTime = Mathf.Clamp(estimatedTime, 0, float.MaxValue);
-
-                    float elapsedDownloadTime = Time.time - downloadStartTime;
-                    string elapsedTimeFormatted = FormatTime(elapsedDownloadTime);
-                    string estimatedTimeFormatted = estimatedTime < float.MaxValue ?
-                        FormatTime(estimatedTime) : "Calculating...";
-
-                    string downloadSpeedText = FormatSpeed(smoothedDownloadSpeed);
-                    string downloadedFormatted = IO.FormatByteString(downloadedBytes);
-                    string fileSizeFormatted = IO.FormatByteString(totalFileSizeBytes);
-
-                    UI.ChangeText(info,
-                        $"Download Speed: {downloadSpeedText}\n" +
-                        $"Remaining Time: {estimatedTimeFormatted}\n\n\n" +
-                        $"Elapsed Download Time: {elapsedTimeFormatted}\n" +
-                        $"Downloaded: {downloadedFormatted} / {fileSizeFormatted} ({progress}%)");
-
-                    if (!cancelCanvas.activeSelf)
-                    {
-                        ShowUIState(downloadCanvas, downloadControls);
-                    }
-
-                    lastDownloadedBytes = downloadedBytes;
-                    lastUpdateTime = Time.time;
+                    errorOccurred = true;
+                    hasCompleted = true;
                 }
 
-                lastDownloadBytes = downloadBytes;
-                lastFileSizeBytes = fileSizeBytes;
-
-                float downloadProgress;
-                if (float.TryParse(progress, out downloadProgress) && downloadProgress >= 98f)
-                    isDownloading = false;
+                if (UOB.HasDownloadCompleted())
+                    hasCompleted = true;
+                
+                speed = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("speed"));
+                fileSizeBytes = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("filesize"));
+                downloadBytes = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("downloaded"));
+                progress = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("progress"));
+                progressValue = progress == int.MinValue.ToString() ? "0" : progress;
             }
 
-            if (!isDownloading)
+            if (Time.time - lastUpdateTime >= updateInterval)
             {
-                ResetDownloadState();
-                yield break;
-            }
-            yield return null;
-        }
+                float downloadedBytes = 0f;
+                float totalFileSize = 0f;
+                float elapsedDownloadTime = Time.time - downloadStartTime;
+                float elapsedDownloadedBytes = float.TryParse(downloadBytes, out downloadedBytes) ? downloadedBytes : 0;
+                float totalFileSizeBytes = float.TryParse(fileSizeBytes, out totalFileSize) ? totalFileSize : 0;
 
-        yield return new WaitForSeconds(5f);
+                UI.ChangeText(downloadCanvas.transform.Find("Text/Title")?.GetComponent<Text>(), currentContentItem.Value.name);
 
-        if (directDownload && installAfter)
-        {
-            if (UOB.GetDownloadError() == 200)
-            {
-                string packagePath = $"{downloadPath}{GameContentAsList[contentScroll].Value.name} " +
-                    $"[{GameContentAsList[contentScroll].Value.title_id}].pkg";
-
-                if (File.Exists(packagePath))
+                float parsedSpeed;
+                if (float.TryParse(speed, out parsedSpeed))
                 {
-                    long actualFileSize = new FileInfo(packagePath).Length;
-
-                    if (actualFileSize < 20971520)
-                    {
-                        Print($"Invalid file size: {IO.FormatByteString(actualFileSize)}", PrintType.Warning);
-                        if (File.Exists(packagePath)) File.Delete(packagePath);
-                        ResetDownloadState();
-                        yield break;
-                    }
-
-                    long expectedFileSize;
-                    if (long.TryParse(lastFileSizeBytes, out expectedFileSize))
-                    {
-                        long allowedVariation = expectedFileSize / 100;
-
-                        if (Math.Abs(actualFileSize - expectedFileSize) <= allowedVariation)
-                        {
-                            Print("Installing package...", PrintType.Warning);
-                            UOB.InstallLocalPackage(packagePath, GameContentAsList[contentScroll].Value.name, deleteAfter);
-                        }
-                        else
-                        {
-                            Print($"Size mismatch - Expected: {IO.FormatByteString(expectedFileSize)}, Actual: {IO.FormatByteString(actualFileSize)}", PrintType.Warning);
-                            if (File.Exists(packagePath)) File.Delete(packagePath);
-                            ResetDownloadState();
-                            yield break;
-                        }
-                    }
-                    else
-                    {
-                        if (File.Exists(packagePath)) File.Delete(packagePath);
-                        ResetDownloadState();
-                        yield break;
-                    }
+                    smoothedDownloadSpeed = smoothedDownloadSpeed == 0f ? parsedSpeed
+                        : smoothedDownloadSpeed * (1 - ewmaAlpha) + parsedSpeed * ewmaAlpha;
                 }
                 else
-                    ResetDownloadState();
+                    smoothedDownloadSpeed = 0f;
+
+                updateInterval = smoothedDownloadSpeed > 1024
+                    ? Mathf.Max(minUpdateInterval, updateInterval * 0.95f) : Mathf.Min(maxUpdateInterval, updateInterval * 1.05f);
+
+                float remainingBytes = totalFileSizeBytes - elapsedDownloadedBytes;
+                float estimatedTime = smoothedDownloadSpeed > 0 ? remainingBytes / smoothedDownloadSpeed : float.MaxValue;
+                string estimatedTimeFormatted = estimatedTime < float.MaxValue ? FormatTime(estimatedTime) : "Calculating...";
+
+                string downloadSpeedText = FormatSpeed(smoothedDownloadSpeed);
+                string elapsedTimeFormatted = FormatTime(elapsedDownloadTime);
+                string downloadedFormatted = IO.FormatByteString(elapsedDownloadedBytes);
+                string fileSizeFormatted = IO.FormatByteString(totalFileSizeBytes);
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/Info")?.GetComponent<Text>(),
+                    $"Download Speed: {downloadSpeedText}\n" +
+                    $"Remaining Time: {estimatedTimeFormatted}\n\n\n" +
+                    $"Elapsed Download Time: {elapsedTimeFormatted}\n" +
+                    $"Downloaded: {downloadedFormatted} " +
+                    $"/ {fileSizeFormatted} ({progressValue}%)");
+
+                if (!cancelCanvas.activeSelf) ShowUIState(downloadCanvas, downloadControls);
+
+                lastUpdateTime = Time.time;
             }
+
+            yield return null;
+        }
+       
+        ResetDownloadState();
+       
+        string sanitizedFilename = currentContentItem.Value.name;
+        foreach (char invalidChar in Path.GetInvalidFileNameChars())
+            sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
+
+        if (sanitizedFilename.Length > 255) sanitizedFilename = sanitizedFilename.Substring(0, 255);
+        string packagePath = $"{downloadPath}{sanitizedFilename} [{currentContentItem.Value.title_id}].pkg";
+
+        bool isValidPkg = IO.IsValidPackageFile(packagePath);
+
+        if (!isValidPkg)
+        {
+            try {
+                File.Delete(packagePath);
+                Print(true, PrintType.Default, $"Invalid package file header, not installing, and deleting...");
+
+            }
+            catch { /* do nothing */ }
+        }
+            
+        if (hasCompleted && !errorOccurred && (UnityEngine.Application.platform == 
+            RuntimePlatform.PS4 && installAfter) && isValidPkg)
+        {
+            Print(true, PrintType.Default, $"Installing package [{packagePath}] from " +
+                $"{downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
+
+            UOB.InstallLocalPackage(packagePath, currentContentItem.Value.name, deleteAfter);
         }
 
-        ResetDownloadState();
-
-        UI.ChangeText(title, string.Empty);
-        UI.ChangeText(info, string.Empty);
+        yield return null;
     }
 
     private string FormatTime(float totalSeconds)
     {
-        if (totalSeconds < 0) return "N/A";
+        if (float.IsNaN(totalSeconds) || totalSeconds == float.MaxValue)
+            return "Calculating...";
 
         TimeSpan time = TimeSpan.FromSeconds(totalSeconds);
-        StringBuilder formattedTime = new StringBuilder();
-
-        if (time.Days > 0)
-            formattedTime.Append($"{time.Days}d ");
-
-        if (time.Hours > 0)
-            formattedTime.Append($"{time.Hours}h ");
-
-        if (time.Minutes > 0)
-            formattedTime.Append($"{time.Minutes}m ");
-
-        formattedTime.Append($"{time.Seconds}s");
-
-        return formattedTime.ToString().Trim();
+        return time.ToString(@"hh\:mm\:ss");
     }
 
     private string FormatSpeed(float bytesPerSecond)
     {
-        string[] units = { "B/s", "KB/s", "MB/s", "GB/s" };
         int unitIndex = 0;
-        double speed = bytesPerSecond;
 
-        while (speed >= 1024 && unitIndex < units.Length - 1)
+        string[] units = { "b/s", "Kb/s", "Mb/s" };
+        while (bytesPerSecond >= 1024 && unitIndex < units.Length - 1)
         {
-            speed /= 1024;
+            bytesPerSecond /= 1024;
             unitIndex++;
         }
 
         int decimalPlaces = unitIndex == 0 ? 0 : unitIndex == 1 ? 1 : 2;
 
-        return $"{speed.ToString($"F{decimalPlaces}")} {units[unitIndex]}";
+        return $"{bytesPerSecond.ToString($"F{decimalPlaces}")} {units[unitIndex]}";
     }
 
     private IEnumerator ScrollText(Text textComponent, string content, float scrollDuration = 12f, float pauseDuration = 0f)
@@ -483,7 +309,7 @@ public class ControlMenu : MonoBehaviour
             float verticalInput =
               Input.GetAxis("LStick-Y") + Input.GetAxis("Dpad-Y") + Input.GetAxis("Mouse-Y");
 
-            if (!closeCanvas.activeSelf && !downloadCanvas.activeSelf 
+            if (!closeCanvas.activeSelf && !downloadCanvas.activeSelf
                 && !cancelCanvas.activeSelf && !updateCanvas.activeSelf)
             {
                 if (Input.GetButtonDown("Triangle"))
@@ -506,7 +332,7 @@ public class ControlMenu : MonoBehaviour
                     }
                     else
                     {
-                        string url = GameContentAsList[contentScroll].Value.cover_url;
+                        string url = currentContentItem.Value.cover_url;
 
                         if (string.IsNullOrEmpty(url) || url == null)
                             coverImage.gameObject.SetActive(false);
@@ -525,9 +351,9 @@ public class ControlMenu : MonoBehaviour
                                 {
                                     var pkgiEntry = parsedData[oldKey];
 
-                                    GameContentAsList[contentScroll].Value.version = latestVersion != null ? latestVersion.ToString() : Variables.version.ToString();
-                                    GameContentAsList[contentScroll].Value.release = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/getRelease/") ?? "12-25-2024";
-                                    GameContentAsList[contentScroll].Value.size = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/") ?? "75000000";
+                                    currentContentItem.Value.version = latestVersion.HasValue ? UI.FormatVersion(latestVersion.Value) : UI.FormatVersion(Variables.version);
+                                    currentContentItem.Value.release = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/getRelease/") ?? "12-25-2024";
+                                    currentContentItem.Value.size = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/") ?? "75000000";
 
                                     GameContent content = pkgiEntry;
 
@@ -538,7 +364,7 @@ public class ControlMenu : MonoBehaviour
 
                                     var output = new
                                     {
-                                        DATA = new Dictionary<string, GameContent> 
+                                        DATA = new Dictionary<string, GameContent>
                                         {
                                             { newKey, content }
                                         }
@@ -564,13 +390,13 @@ public class ControlMenu : MonoBehaviour
                         Text min_fw = textTransform.Find("MinFWReq")?.GetComponent<Text>();
                         Text release = textTransform.Find("Release")?.GetComponent<Text>();
 
-                        UI.ChangeText(name, GameContentAsList[contentScroll].Value.name);
-                        UI.ChangeText(title_id, $"Title ID: {GameContentAsList[contentScroll].Value.title_id} " +
-                            $"[{GameContentAsList[contentScroll].Value.region}]");
+                        UI.ChangeText(name, currentContentItem.Value.name);
+                        UI.ChangeText(title_id, $"Title ID: {currentContentItem.Value.title_id} " +
+                            $"[{currentContentItem.Value.region}]");
 
-                        UI.ChangeText(version, $"Package Version: {GameContentAsList[contentScroll].Value.version}");
-                        UI.ChangeText(min_fw, $"Required Firmware: {GameContentAsList[contentScroll].Value.min_fw}");
-                        UI.ChangeText(release, $"Release Date: {GameContentAsList[contentScroll].Value.release}");
+                        UI.ChangeText(version, $"Package Version: {currentContentItem.Value.version}");
+                        UI.ChangeText(min_fw, $"Required Firmware: {currentContentItem.Value.min_fw}");
+                        UI.ChangeText(release, $"Release Date: {currentContentItem.Value.release}");
 
                         if (scrollCoroutine != null)
                         {
@@ -578,19 +404,19 @@ public class ControlMenu : MonoBehaviour
                             scrollCoroutine = null;
                         }
 
-                        scrollCoroutine = StartCoroutine(ScrollText(name, GameContentAsList[contentScroll].Value.name));
+                        scrollCoroutine = StartCoroutine(ScrollText(name, currentContentItem.Value.name));
                     }
                 }
 
-                if (menuCanvas.activeSelf &&!downloadCanvas.activeSelf)
+                if (menuCanvas.activeSelf && !downloadCanvas.activeSelf)
                 {
                     if (verticalInput != 0) NavigateMenu(verticalInput);
-                    if (horizontalInput != 0 && selectedIndex == 4 
+                    if (horizontalInput != 0 && selectedIndex == 4
                         || selectedIndex == 11) ScrollOption(horizontalInput);
                 }
                 else
                 {
-                    if (!closeCanvas.activeSelf && !detailsCanvas.activeSelf 
+                    if (!closeCanvas.activeSelf && !detailsCanvas.activeSelf
                         && !downloadCanvas.activeSelf && !cancelCanvas.activeSelf)
                     {
                         if (Input.GetButtonDown("L1")) ScrollOption(-1);
@@ -610,15 +436,13 @@ public class ControlMenu : MonoBehaviour
                                     pkg.Size.color = Color.white;
                                 }
                             }
-
-                            contentScroll = 0;
-
-                            UIManagement.ClearDisplayedItems();
-
-                            HighlightCurrentPkg();
                         }
 
-                        if (Input.GetButtonDown("L1") || Input.GetButtonDown("R1")) SaveConfiguration();
+                        if (Input.GetButtonDown("L1") || Input.GetButtonDown("R1"))
+                        {
+                            cooldownTimer = inputCooldown;
+                            SaveConfiguration();
+                        }
 
                         if (Input.GetButtonDown("Touchpad")) // make UOB HELPER FUNC FOR THIS (KB INPUT HANDLING)
                         {
@@ -627,12 +451,9 @@ public class ControlMenu : MonoBehaviour
                             string kbOutput = Marshal.PtrToStringAnsi(kbInput);
 
                             if (string.IsNullOrEmpty(kbOutput) || kbOutput == "NULL")
-                                filter = string.Empty;
-                            else filter = kbOutput;
-
-                            UIManagement.ClearDisplayedItems();
-
-                            HighlightCurrentPkg();
+                                searchFilter = string.Empty;
+                            else
+                                searchFilter = kbOutput;
                         }
                     }
 
@@ -648,8 +469,6 @@ public class ControlMenu : MonoBehaviour
                             if (contentScroll < 0) contentScroll = filteredCount > 0 ?
                                 Mathf.Max(0, filteredCount - (filteredCount % itemsPerPage == 0
                                 ? itemsPerPage : filteredCount % itemsPerPage)) : 0;
-
-                            if (filteredCount > 0) HighlightCurrentPkg();
                         }
 
                         if (Input.GetAxis("R2") != 0)
@@ -659,9 +478,6 @@ public class ControlMenu : MonoBehaviour
                             contentScroll += scrollAmount;
                             if (contentScroll >= filteredCount)
                                 contentScroll = 0;
-
-                            if (filteredCount > 0)
-                                HighlightCurrentPkg();
                         }
 
                         if (verticalInput != 0)
@@ -700,12 +516,9 @@ public class ControlMenu : MonoBehaviour
                             {
                                 contentScroll--;
 
-                                if (contentScroll < 0) contentScroll 
+                                if (contentScroll < 0) contentScroll
                                         = filteredCount > 0 ? filteredCount - 1 : 0;
                             }
-
-                            if (filteredCount > 0)
-                                HighlightCurrentPkg();
                         }
                     }
                 }
@@ -714,9 +527,7 @@ public class ControlMenu : MonoBehaviour
             if (Input.GetButtonDown("X"))
             {
                 if (menuLoaded)
-                {
                     ExecuteMenuItemAction();
-                }
                 else
                 {
                     if (cancelCanvas.activeSelf)
@@ -769,6 +580,7 @@ public class ControlMenu : MonoBehaviour
 
                         if (UnityEngine.Application.platform == RuntimePlatform.PS4)
                             UOB.ExitApplication();
+
 #if UNITY_EDITOR_WIN
                         UnityEditor.EditorApplication.isPlaying = false;
 #endif
@@ -782,45 +594,20 @@ public class ControlMenu : MonoBehaviour
                         if (currentPkg.TitleID.text == "PKGI13337")
                         {
                             ShowUIState(null, mainControls);
-                            CheckForUpdates();
-
+                            await CheckForAppUpdates();
                             return;
                         }
 
-                        var pkgData = GameContentAsList[contentScroll].Value;
+                        var downloadlink = Uri.EscapeUriString(Uri.UnescapeDataString(currentContentItem.Key));
+                        
+                        Print(true, PrintType.Warning, "Attempting to download PKG from: " + downloadlink); // move to UOB
 
-                        var downloadInfo = parsedData
-                          .FirstOrDefault(kv =>
-                            kv.Value.title_id == pkgData.title_id &&
-                            kv.Value.region == pkgData.region &&
-                            kv.Value.name == pkgData.name &&
-                            kv.Value.version == pkgData.version &&
-                            kv.Value.release == pkgData.release &&
-                            kv.Value.size == pkgData.size &&
-                            kv.Value.min_fw == pkgData.min_fw &&
-                            kv.Value.cover_url == pkgData.cover_url);
+                        string sanitizedFilename = currentContentItem.Value.name;
+                        foreach (char invalidChar in Path.GetInvalidFileNameChars())
+                            sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
 
-                        var downloadlink = downloadInfo.Key;
-
-                        if (downloadlink != null)
-                        {
-                            if (downloadlink.Contains($"{contentFilter}"))
-                                downloadlink = downloadlink.Replace($"{contentFilter}", "");
-                            else
-                            {
-                                foreach (ContentType type in Enum.GetValues(typeof(ContentType)))
-                                {
-                                    if (type != ContentType.Config && type != ContentType.ALL)
-                                    {
-                                        if (downloadlink.Contains($"{type}_"))
-                                        {
-                                            downloadlink = downloadlink.Replace($"{type}_", "");
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        if (sanitizedFilename.Length > 255)
+                            sanitizedFilename = sanitizedFilename.Substring(0, 255);
 
                         if (directDownload)
                         {
@@ -841,7 +628,7 @@ public class ControlMenu : MonoBehaviour
 
                             if (UnityEngine.Application.platform == RuntimePlatform.PS4)
                                 UOB.DownloadPkgFile(downloadlink, downloadPath,
-                                    $"{downloadInfo.Value.name} [{downloadInfo.Value.title_id}]", true, "NULL");
+                                    $"{sanitizedFilename} [{currentContentItem.Value.title_id}]", true, "NULL");
 
                             downloadCoroutine = StartCoroutine(UpdateDownloadProgress());
 
@@ -850,7 +637,7 @@ public class ControlMenu : MonoBehaviour
                         else
                         {
                             if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-                                UOB.DownloadAndInstallPKG(downloadlink, downloadInfo.Value.name, downloadInfo.Value.cover_url);
+                                UOB.DownloadAndInstallPKG(downloadlink, sanitizedFilename, currentContentItem.Value.cover_url);
                         }
                     }
                 }
@@ -912,10 +699,8 @@ public class ControlMenu : MonoBehaviour
         Menu.HighlightMenuItem(selectedIndex);
     }
 
-    private async void ScrollOption(float horizontalInput, int textArrayInt = -1)
+    private void ScrollOption(float horizontalInput, int textArrayInt = -1)
     {
-        if (populateViaWeb) isPopulatedViaWeb = false;
-
         if (textArrayInt == -1) textArrayInt = selectedIndex;
 
         string currentText = mainControls.activeSelf ? null : menuTexts[textArrayInt].text;
@@ -950,59 +735,59 @@ public class ControlMenu : MonoBehaviour
                     ScrollOptionLeft();
                 else if (horizontalInput > 0)
                     ScrollOptionRight();
-
-                if (await JSON.ParseJSON((ContentType)contentFilter) == 0)
-                    UIManagement.ClearDisplayedItems();
-
-                HighlightCurrentPkg();
             }
         }
     }
 
-    private async void ExecuteMenuItemAction()
+    private void ExecuteMenuItemAction()
     {
         cooldownTimer = inputCooldown;
+
+        var region = string.Empty;
+        switch (selectedIndex)
+        {
+            case 5:
+                region = "USA";
+                break;
+            case 6:
+                region = "Europe";
+                break;
+            case 7:
+                region = "Japan";
+                break;
+            case 8:
+                region = "Asia";
+                break;
+        }
 
         if (menuLoaded)
             switch (selectedIndex)
             {
                 case 0:
-                    SetSortOption(sortByOptions[(int)SortBy.Size], 0);
-                    break;
                 case 1:
-                    SetSortOption(sortByOptions[(int)SortBy.Region], 1);
-                    break;
                 case 2:
-                    SetSortOption(sortByOptions[(int)SortBy.Name], 2);
-                    break;
                 case 3:
-                    SetSortOption(sortByOptions[(int)SortBy.TitleID], 3);
+                    SetSortOption(sortByOptions[(int)(SortBy)selectedIndex], selectedIndex);
+                    reloadTriggered = true;
                     break;
+
                 case 4:
                     ScrollOption(1);
                     break;
+
                 case 5:
-                    ToggleRegionOption(5, "USA");
-                    break;
                 case 6:
-                    ToggleRegionOption(6, "Europe");
-                    break;
                 case 7:
-                    ToggleRegionOption(7, "Japan");
-                    break;
                 case 8:
-                    ToggleRegionOption(8, "Asia");
+                    ToggleRegionOption(selectedIndex, region);
+                    reloadTriggered = true;
                     break;
 
                 case 9:
-                    await JSON.ParseJSON(ContentType.Config);
-                    await JSON.ParseJSON((ContentType)contentFilter);
-
-                    UIManagement.ClearDisplayedItems();
-
-                    HighlightCurrentPkg();
-
-                    ToggleMenu(true);
+                    toggleBackToLocal = true;
+                    HandleConfiguration();
+                    UpdateSettingsOptions();
+                    ToggleMenu();
                     break;
 
                 case 10: // make UOB HELPER FUNC FOR THIS (KB INPUT HANDLING)
@@ -1013,6 +798,7 @@ public class ControlMenu : MonoBehaviour
                     if (string.IsNullOrEmpty(kbOutput) ||
                       kbOutput == "NULL") return;
                     else downloadPath = kbOutput;
+                    reloadTriggered = true;
                     break;
 
                 case 11:
@@ -1025,16 +811,10 @@ public class ControlMenu : MonoBehaviour
                 case 13:
                     ToggleOption(13, "Delete After Install", ref deleteAfter);
                     break;
-
                 case 14:
                     ToggleOption(14, "Populate Via Web", ref populateViaWeb);
-                    await JSON.ParseJSON((ContentType)contentFilter);
-
-                    UIManagement.ClearDisplayedItems();
-
-                    HighlightCurrentPkg();
+                    toggleBackToLocal = true;
                     break;
-
                 case 15:
                     ToggleOption(15, "Background Music", ref backgroundMusic);
 
@@ -1062,9 +842,13 @@ public class ControlMenu : MonoBehaviour
                         return;
                     }
 
-                    if (URL.IsValidImage(_kbOutput))
-                        SetImageFromURL(_kbOutput, ref background);
+                    if (!File.Exists(_kbOutput))
+                    {
+                        if (URL.IsValidImage(_kbOutput))
+                            SetImageFromURL(_kbOutput, ref background);
+                    }
                     else IO.LoadImage(_kbOutput, ref background);
+
                     break;
 
             }
@@ -1105,14 +889,39 @@ public class ControlMenu : MonoBehaviour
 
             sortCriteria = index;
         }
-
-        HighlightCurrentPkg();
     }
 
     #endregion
 
     #region UI Interaction
-    public async void ToggleMenu(bool resetSettings = false)
+    public void UpdateSettingsOptions()
+    {
+        InitializeMenuItems();
+
+        Menu.HighlightMenuItem(selectedIndex);
+
+        UI.UpdateScrollbar(scrollbar);
+
+        UI.ChangeText(menuTexts, 4, $"> {contentOptions[contentFilter]}");
+
+        if (menuTexts[4] != null && menuTexts[4].text.Contains("^"))
+            UI.ChangeText(menuTexts, 4, $"v {sortByOptions[sortCriteria]}");
+        else if (menuTexts[4] != null && menuTexts[4].text.Contains("v"))
+            UI.ChangeText(menuTexts, 4, $"^ {sortByOptions[sortCriteria]}");
+
+        if (filteredRegions.Contains("USA")) ToggleRegionOption(5, "USA");
+        if (filteredRegions.Contains("Europe")) ToggleRegionOption(6, "Europe");
+        if (filteredRegions.Contains("Japan")) ToggleRegionOption(7, "Japan");
+        if (filteredRegions.Contains("Asia")) ToggleRegionOption(8, "Asia");
+
+        UI.ChangeText(menuTexts, 11, directDownload ? $"> Direct Download" : $"> Back. Download");
+        UI.ChangeText(menuTexts, 12, installAfter ? $"x Install Once Done" : $"o Install Once Done");
+        UI.ChangeText(menuTexts, 13, deleteAfter ? $"x Delete After Install" : $"o Delete After Install");
+        UI.ChangeText(menuTexts, 14, populateViaWeb ? $"x Populate Via Web" : $"o Populate Via Web");
+        UI.ChangeText(menuTexts, 15, backgroundMusic ? $"x Background Music" : $"o Background Music");
+    }
+
+    public void ToggleMenu(bool resetSettings = false)
     {
         if (downloadCanvas.activeSelf) return;
 
@@ -1152,9 +961,7 @@ public class ControlMenu : MonoBehaviour
         menuLoaded = !menuLoaded;
 
         if (menuLoaded)
-        {
             ShowUIState(menuCanvas, menuControls);
-        }
         else
         {
             ShowUIState(null, mainControls);
@@ -1190,11 +997,6 @@ public class ControlMenu : MonoBehaviour
                   $"Populate Via Web: {populateViaWeb}\n" +
                   $"Background Music: {backgroundMusic}\n");
 
-                if (await JSON.ParseJSON((ContentType)contentFilter) == 0)
-                    UIManagement.ClearDisplayedItems();
-
-                HighlightCurrentPkg();
-
                 UI.ChangeText(menuTexts, 4, $"> {contentOptions[contentFilter]}");
 
                 if (menuTexts[4] != null && menuTexts[4].text.Contains("^"))
@@ -1204,17 +1006,14 @@ public class ControlMenu : MonoBehaviour
 
                 var regionMappings = new Dictionary<string, int>
                 {
-                    { "USA", 5 },
-                    { "Europe", 6 },
-                    { "Japan", 7 },
-                    { "Asia", 8 }
+                    { "USA", 5 }, { "Europe", 6 }, { "Japan", 7 }, { "Asia", 8 }
                 };
 
                 foreach (var region in regionMappings.Keys)
                     UI.ChangeText(menuTexts, regionMappings[region],
                       filteredRegions.Contains(region) ? $"x {region}" : $"o {region}");
 
-                background.gameObject.SetActive(!string.IsNullOrEmpty(background_uri));
+                background.gameObject.SetActive(URL.IsValidURI(background_uri) || URL.IsValidImage(background_uri));
 
                 UI.ChangeText(menuTexts, 11, directDownload ? "> Direct Download" : "> Back. Download");
                 UI.ChangeText(menuTexts, 12, installAfter ? "x Install Once Done" : "o Install Once Done");
@@ -1223,14 +1022,12 @@ public class ControlMenu : MonoBehaviour
                 UI.ChangeText(menuTexts, 15, backgroundMusic ? "x Background Music" : "o Background Music");
 
                 if (!backgroundMusic)
-                    audioSource.Pause();
+                    audioSource.Stop();
                 else
                     audioSource.Play();
             }
             else
-            {
                 SaveConfiguration();
-            }
         }
     }
 
@@ -1288,8 +1085,6 @@ public class ControlMenu : MonoBehaviour
 
         if (isRegionSelected) AddRegion(regionName);
         else RemoveRegion(regionName);
-
-        HighlightCurrentPkg();
     }
 
     private void ToggleOption(int index, string text, ref bool toggle)
@@ -1325,4 +1120,36 @@ public class ControlMenu : MonoBehaviour
     }
 
     #endregion
+
+    private IEnumerator Start()
+    {
+        StartCoroutine(InitializeCoroutine());
+        string previousText = string.Empty;
+
+        while (true)
+        {
+            HandleUserInput();
+
+            if (cooldownTimer > 0)
+                cooldownTimer = Mathf.Clamp(cooldownTimer - Time.deltaTime, 0, inputCooldown);
+
+            var textComponent = UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.GetComponent<Text>();
+            if (textComponent || initialized)
+            {
+                string currentText = $"{contentOptions[contentFilter]}";
+                if (currentText != previousText)
+                {
+                    textComponent.text = currentText;
+                    previousText = currentText;
+
+                    reloadTriggered = true;
+                }
+            }
+
+            UIManagement.HighlightCurrentPkg();
+
+            yield return null;
+        }
+    }
+
 }

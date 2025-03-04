@@ -27,8 +27,7 @@ public enum SortBy
     TitleID
 }
 
-[Serializable]
-public class JsonData
+[Serializable] public class JsonData
 {
     public class Config
     {
@@ -108,8 +107,7 @@ public class JsonData
 
     public List<PKG> PKGs = new List<PKG>();
 
-    [Serializable]
-    public class PKG
+    [Serializable] public class PKG
     {
         public Text TitleID, Region, Title, Downloaded, Size;
     }
