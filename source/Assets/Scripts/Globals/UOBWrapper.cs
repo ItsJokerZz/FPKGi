@@ -180,7 +180,7 @@ public static class UOBWrapper
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
             !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
-            Print($"Invalid URL format: {url}", PrintType.Error);
+            Print($"Invalid URL format: {url}", PrintType.Default);
             return null;
         }
 
@@ -228,7 +228,7 @@ public static class UOBWrapper
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
             !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
-            Print($"Invalid URL format: {url}", PrintType.Error);
+            Print($"Invalid URL format: {url}", PrintType.Default);
             return false;
         }
 
