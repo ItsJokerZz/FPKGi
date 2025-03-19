@@ -324,7 +324,7 @@ public class ContentHandler : MonoBehaviour
 
                 sanitizedFilename = sanitizedFilename.Length > 255 ? sanitizedFilename.Substring(0, 255) : sanitizedFilename;
 
-                var packagePath = Path.Combine(downloadPath, sanitizedFilename + " [" + package.TitleID.text + "].pkg");
+                var packagePath = Path.Combine(downloadPath, $"[{package.TitleID.text}] {sanitizedFilename}.pkg");
                 bool isFullyDownloaded = File.Exists(packagePath) && IO.IsValidPackageFile(packagePath);
                 bool isPartiallyDownloaded = File.Exists($"{packagePath}.resume") && !isFullyDownloaded;
                 bool isInstalled = isConsole && UOB.CheckIfAppExists(package.TitleID.text);

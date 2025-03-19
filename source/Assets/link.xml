@@ -4,9 +4,4 @@
 		<type fullname="Newtonsoft.Json.JsonConvert"/>
 		<type fullname="Newtonsoft.Json.Linq.JObject"/>
 	</assembly>
-
-	<linker>
-		<assembly fullname="Aspose.Zip" preserve="all"/>
-	</linker>
-
 </linker>

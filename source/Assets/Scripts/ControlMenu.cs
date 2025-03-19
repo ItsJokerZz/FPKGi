@@ -604,7 +604,6 @@ public class ControlMenu : MonoBehaviour
 
                 string packagePath = $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";
 
-
                 if (menuLoaded)
                     ExecuteMenuItemAction();
                 else
@@ -681,10 +680,7 @@ public class ControlMenu : MonoBehaviour
                             else
                             {
                                 if (isConsole)
-                                {
                                     UOB.DownloadPkgFile(downloadlink, downloadPath, $"[{currentContentItem.Value.title_id}] {sanitizedFilename}", true, "NULL");
-                                    Print(true, PrintType.Default, $"Saving/writing file to: {downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg"); // move to UOB
-                                }
 
                                 downloadCoroutine = StartCoroutine(UpdateDownloadProgress());
                             }
