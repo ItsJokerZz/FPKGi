@@ -16,7 +16,7 @@ public enum ContentType
     Homebrew,
     Emulators,
     Themes,
-    ALL
+    ALL,
 }
 
 public enum SortBy
@@ -61,6 +61,7 @@ public enum SortBy
         public string downloadPath { get; set; }
         public bool installAfter { get; set; }
         public bool deleteAfter { get; set; }
+        public bool deleteOnCancel { get; set; }
     }
 
     public class Application
@@ -68,6 +69,7 @@ public enum SortBy
         public string background_uri { get; set; }
         public bool backgroundMusic { get; set; }
         public bool populateViaWeb { get; set; }
+        public bool enableUpdates { get; set; }
     }
 
     public class ContentURLs

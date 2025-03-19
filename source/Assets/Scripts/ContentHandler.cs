@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityOrbisBridge;
 using static JsonData;
 using static Utilities;
 using static Variables;
@@ -24,7 +26,7 @@ public class ContentHandler : MonoBehaviour
 
     public static int allCachedCount = 0;
 
-    public static bool? initalCountUpdated = null;
+    public static bool? initialCountUpdated = null;
     public static bool toggleBackToLocal = false;
 
     public static Dictionary<ContentType, Dictionary<string, GameContent>>
@@ -56,7 +58,6 @@ public class ContentHandler : MonoBehaviour
 
     public static Dictionary<string, GameContent> GetHomebrewCombinedCache()
     {
-        if (homebrewCombinedCache != null && !ControlMenu.reloadTriggered) return homebrewCombinedCache;
 
         var homebrewContent = contentTypeCache.ContainsKey(ContentType.Homebrew)
             ? contentTypeCache[ContentType.Homebrew] : new Dictionary<string, GameContent>();
@@ -130,7 +131,7 @@ public class ContentHandler : MonoBehaviour
                 return itemsList.Where(item =>
                 {
                     string region = item.Value.region?.ToUpper() ?? "";
-                    return region == "ALL" || region == "???" || region == "UNK" ||
+                    return region == "UNK" || region == "???" || region == "ALL" ||
                            string.IsNullOrEmpty(region);
                 }).ToList();
             }
@@ -143,7 +144,7 @@ public class ContentHandler : MonoBehaviour
                        (filteredRegions.Contains("Europe") && region == "EUR") ||
                        (filteredRegions.Contains("Japan") && region == "JAP") ||
                        (filteredRegions.Contains("USA") && region == "USA") ||
-                       region == "ALL" || region == "???" || region == "UNK" ||
+                       region == "UNK" || region == "???" || region == "ALL" || 
                        string.IsNullOrEmpty(region);
             }).ToList();
         }
@@ -193,14 +194,13 @@ public class ContentHandler : MonoBehaviour
                             string region = item.Value.region?.ToUpperInvariant() ?? "???";
                             switch (region)
                             {
-                                case "ALL": return 0;
-                                case "ASIA": return 1;
-                                case "EUR": return 2;
-                                case "JAP": return 3;
-                                case "USA": return 4;
-                                case "???":
-                                default:
-                                    return 4;
+                                case "???": return 0;
+                                case "ALL": return 1; 
+                                case "ASIA": return 2;
+                                case "EUR": return 3;
+                                case "JAP": return 4;
+                                case "USA": return 5;
+                                default: return 6;
                             }
                         }) :
                         itemsList.OrderByDescending(item =>
@@ -208,14 +208,13 @@ public class ContentHandler : MonoBehaviour
                             string region = item.Value.region?.ToUpperInvariant() ?? "???";
                             switch (region)
                             {
-                                case "ALL": return 0;
-                                case "ASIA": return 1;
-                                case "EUR": return 2;
-                                case "JAP": return 3;
-                                case "USA": return 4;
-                                case "???":
-                                default:
-                                    return 4;
+                                case "???": return 0;
+                                case "ALL": return 1;
+                                case "ASIA": return 2;
+                                case "EUR": return 3;
+                                case "JAP": return 4;
+                                case "USA": return 5;
+                                default: return 6;
                             }
                         });
                     break;
@@ -273,6 +272,7 @@ public class ContentHandler : MonoBehaviour
             var displayedTitles = new HashSet<string>();
             var duplicateTitles = new HashSet<string>();
             var validRegions = new HashSet<string> { "asia", "eur", "jap", "usa", "all" };
+            var package = new PKG();
 
             foreach (var itemGroup in groupedItemsByKey)
             {
@@ -280,58 +280,28 @@ public class ContentHandler : MonoBehaviour
                 {
                     if (currentIndex >= Content.PKGs.Count) break;
 
-                    var package = Content.PKGs[currentIndex];
-                    if (package == null) continue;
-
-                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
+                    package = Content.PKGs[currentIndex];
+                    if (package == null || item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
                         || string.IsNullOrEmpty(item.Value.name) || string.IsNullOrEmpty(item.Value.size))
                         continue;
 
                     string region = item.Value.region?.ToLower().Trim();
-
                     if (string.IsNullOrEmpty(region) || !validRegions.Contains(region) ||
-                        region.Length > 4 || region == "unk" || region == "???") item.Value.region = "???";
+                        region.Length > 4 || region == "unk" || region == "???")
+                        item.Value.region = "???";
                     else
                         item.Value.region = region.ToUpper();
 
-                    item.Value.region.Replace("???", "UNK");
+                    item.Value.region = item.Value.region.Replace("UNK", "???");
                     item.Value.min_fw = string.IsNullOrEmpty(item.Value.min_fw) ? "?.??" : item.Value.min_fw;
                     item.Value.release = string.IsNullOrEmpty(item.Value.release) ? "UNKNOWN" : item.Value.release;
+                    item.Value.version = item.Value.version ?? "?.??";
 
                     bool isFirstOccurrence = !displayedTitles.Contains(item.Value.name);
-
                     if (!isFirstOccurrence)
                         duplicateTitles.Add(item.Value.name);
                     else
                         displayedTitles.Add(item.Value.name);
-
-                    currentIndex++;
-                }
-            }
-
-            currentIndex = 0;
-            foreach (var itemGroup in groupedItemsByKey)
-            {
-                foreach (var item in itemGroup)
-                {
-                    if (currentIndex >= Content.PKGs.Count) break;
-
-                    var package = Content.PKGs[currentIndex];
-                    if (package == null) continue;
-
-                    if (item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
-                        || string.IsNullOrEmpty(item.Value.name)
-                        || string.IsNullOrEmpty(item.Value.size))
-                        continue;
-
-                    string region = item.Value.region?.Trim().ToLower();
-                    item.Value.region = (string.IsNullOrEmpty(region) ||
-                        !validRegions.Contains(region) || region.Length > 4)
-                        ? "???" : region.ToUpper();
-
-                    item.Value.version = item.Value.version ?? "?.??";
-                    item.Value.min_fw = item.Value.min_fw ?? "?.??";
-                    item.Value.release = item.Value.release ?? "UNKNOWN";
 
                     string titleToDisplay = duplicateTitles.Contains(item.Value.name)
                         ? $"{item.Value.name} [v{item.Value.version}]" : item.Value.name;
@@ -342,6 +312,46 @@ public class ContentHandler : MonoBehaviour
                     UI.ChangeText(package.Size, IO.FormatByteString(item.Value.size));
 
                     currentIndex++;
+                }
+
+                package.Downloaded.gameObject.SetActive(false);
+                UI.ChangeText(package.Downloaded, "");
+                package.Downloaded.color = Color.white;
+
+                string sanitizedFilename = package.Title.text;
+                foreach (char invalidChar in Path.GetInvalidFileNameChars())
+                    sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
+
+                sanitizedFilename = sanitizedFilename.Length > 255 ? sanitizedFilename.Substring(0, 255) : sanitizedFilename;
+
+                var packagePath = Path.Combine(downloadPath, sanitizedFilename + " [" + package.TitleID.text + "].pkg");
+                bool isFullyDownloaded = File.Exists(packagePath) && IO.IsValidPackageFile(packagePath);
+                bool isPartiallyDownloaded = File.Exists($"{packagePath}.resume") && !isFullyDownloaded;
+                bool isInstalled = isConsole && UOB.CheckIfAppExists(package.TitleID.text);
+
+                if (isInstalled)
+                {
+                    package.Downloaded.gameObject.SetActive(true);
+                    UI.ChangeText(package.Downloaded, "x");
+                    package.Downloaded.color = blueish;
+                }
+                else if (isFullyDownloaded)
+                {
+                    package.Downloaded.gameObject.SetActive(true);
+                    UI.ChangeText(package.Downloaded, "+");
+                    package.Downloaded.color = yellowish;
+                }
+                else if (isPartiallyDownloaded)
+                {
+                    package.Downloaded.gameObject.SetActive(true);
+                    UI.ChangeText(package.Downloaded, "o");
+                    package.Downloaded.color = redish;
+                }
+                else
+                {
+                    package.Downloaded.gameObject.SetActive(false);
+                    UI.ChangeText(package.Downloaded, "");
+                    package.Downloaded.color = Color.white;
                 }
             }
         }
@@ -385,6 +395,16 @@ public class ContentHandler : MonoBehaviour
         {
             currentPage = Mathf.Max(page, 0);
             int startIndex = currentPage * itemsPerPage;
+         
+            foreach (var pkg in Content.PKGs)
+            {
+                if (pkg != null)
+                {
+                    pkg.Downloaded.gameObject.SetActive(false);
+                    UI.ChangeText(pkg.Downloaded, "");
+                    pkg.Downloaded.color = Color.white;
+                }
+            }
 
             if (contentFilter != (int)ContentType.Config)
             {
@@ -456,16 +476,20 @@ public class ContentHandler : MonoBehaviour
 
         public static async void UpdatePkgCount()
         {
-            bool needUpdate = ControlMenu.reloadTriggered || toggleBackToLocal
-             || (Background.initialized && initalCountUpdated == null);
+            bool needUpdate =
+                toggleBackToLocal 
+                || ControlMenu.reloadTriggered 
+                || ControlMenu.fullyInitialized
+                || (Background.initializedApp
+                && initialCountUpdated == null);
 
             if (!needUpdate)
                 return;
 
-            if (initalCountUpdated == null)
+            if (initialCountUpdated == null)
             {
                 toggleBackToLocal = true;
-                initalCountUpdated = true;
+                initialCountUpdated = true;
                 ControlMenu.reloadTriggered = true;
             }
 
@@ -556,8 +580,6 @@ public class ContentHandler : MonoBehaviour
             currentItems = Filtering.ApplyFilter(currentItems);
 
             int currentFilteredCount = currentItems.Count;
-            int currentPageCount = Mathf.Min(itemsPerPage,
-                currentFilteredCount - currentPage * itemsPerPage);
 
             int fullCount = contentTypeCache.ContainsKey(ContentType.ALL)
                 ? contentTypeCache[ContentType.ALL]

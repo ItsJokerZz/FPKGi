@@ -1,7 +1,10 @@
-# FPKGi <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/itsjokerzz/fpkgi"> - A Server-Based PS4 Content Installer
+# FPKGi <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/itsjokerzz/fpkgi"> - A Server-Based PS4 & PS5 Content Installer
 
-> [!NOTE]  
-> **FPKGi (Fake PKG Installer)** is a tool for installing modified `.pkg` files on the PS4, inspired by the original [PKGi](https://www.github.com/bucanero/pkgi-ps3) for PS3. It allows you to manage and install your own content using `.json` files, either locally over your network or from the web, and download packages from your private server. Fully compatible with "fake" `.pkg` content, this open-source, community-driven project is designed for educational and personal use. It supports game preservation in the PS4 homebrew scene by providing a seamless way to browse, download, and install content efficiently. A recommended setup is offloading to a NAS, running a web server with Node.js or Python, and using direct URLs for downloads. Use responsibly with your own content and servers and make sure to be downloading FPKGi from our GitHub official repository, via [pkg-zone.com](https://pkg-zone.com/details/FPKGI13337), or through the Homebrew Store. **Avoid third-party sources, we do not take any responsibility if there's any damage to your console due to malicious FPKG(s) downloaded from any public third-party hosted sources or unknown sources.**
+> [!NOTE]
+> FPKGi (Fake PKG Installer) is an open-source homebrew app for installing modified .pkg files on the PS4 and PS5. Inspired by the original PKGi for PSP, Vita, and PS3, it enables you to manage and install content via .json files—from your device, a local network, or the web—and supports package downloads from your private server. Designed for educational and personal use, FPKGi promotes game preservation in the PlayStation homebrew scene by streamlining content browsing, downloading, and installation. For best performance, offload your files to a NAS and run a web server with Node.js or Python, then pass the content URL to your .json files.
+
+> [!IMPORTANT]  
+> Use FPKGi responsibly and in accordance with the laws of your country. This tool is intended solely for legal, educational, and personal use. Do not use FPKGi for piracy or any other illegal activities. Always download FPKGi from our official GitHub repository, via pkg-zone.com, or through the Homebrew Store, and avoid third-party sources. We assume no responsibility any damage/malicious downloads and/or legal issues.
 
 ## Setup Instructions
 #### Download the Latest Version:
@@ -12,10 +15,10 @@
    - Alternatively, you can install directly from LightningMods' [Homebrew Store](https://github.com/LightningMods/PS4-Store).
 
 ### Populate Content
-Launch the application to automatically create the necessary directories and `.json` files in the `/data/FPKGi/` folder.
+Launch the app to automatically create the necessary directories and `.json` files in the `/user/data/FPKGi/` folder.
 
 #### Populate Content Locally
-Edit the `.json` files generated at `/data/FPKGi/ContentJSONs/` to add your content. <br>
+Edit the `.json` files generated at `/user/data/FPKGi/ContentJSONs/` to add your content. <br>
 **You can also generate / populate, and save the necessary `.json` file [here](https://www.itsjokerzz.site/projects/FPKGi/gen/) on my site.**
 
 > [!NOTE]
@@ -39,12 +42,11 @@ Edit the `.json` files generated at `/data/FPKGi/ContentJSONs/` to add your cont
 ```
 
 > [!IMPORTANT]  
-> URLs must be direct links to `.pkg` files. Indirect links may cause issues, and the `"size"` attribute is **REQUIRED!**<br>
 > Please ensure the size is as accurate as possible to prevent issues with downloading! The following fields can be <br> left as `null`
 where applicable: `"version"`, `"region"`, `"release"`, `"min_fw"`, and `"cover_url"` if you decide.
 
 #### Populate Content Via Web
-To enable web population, edit the `config.json` file located at `/data/FPKGi` and enable it in the menu.
+To enable web population, edit the `config.json` file located at `/user/data/FPKGi/` and enable it in the menu.
 
 ### Locate and edit the following section:
 ```json
@@ -74,21 +76,21 @@ Unspecified fields will default to loading content from local `.json` files.
 
 ## Controls & Settings
 ### Navigation
-- **Move Through Items**: Use <kbd>(LS)tick</kbd>/<kbd>(RS)tick</kbd> or use the dpad to navigate.
+- **Move Through Items**: Use **<kbd>(LS)tick</kbd>/<kbd>(RS)tick</kbd>** or use the dpad to navigate.
 - **Select/Download**: Press **![X](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/CROSS.png)** to select or download content.
 - **Page & Category Navigation**:
-  - <kbd>L1</kbd>/<kbd>R1</kbd>: Changes pages.
-  - <kbd>L2</kbd>/<kbd>R2</kbd>: Changes category.
+  - **<kbd>L1</kbd>/<kbd>R1</kbd>**: Changes pages.
+  - **<kbd>L2</kbd>/<kbd>R2</kbd>**: Changes category.
 - **View Details**: Press **![square](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/SQUARE.png)** to view detailed information about the selected content.
 
 ### Settings Menu
-- **Press ![triangle](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/TRIANGLE.png) to open settings**.
+- Press **![triangle](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/TRIANGLE.png)** to open settings.
 - **Save/Cancel**:
   - Press **![triangle](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/TRIANGLE.png)** to save current settings changes.
   - Press **![circle](https://www.github.com/bucanero/pkgi-ps3/raw/master/data/CIRCLE.png)** to toggle menu & not save setting.
  
 <br>
-  
+
 - **Press the touchpad to search or filter through content by title ID or name.**
   
 ## Features
@@ -108,7 +110,7 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
     ```
   - Local Example:
     ```json
-    "background_uri": "/data/FPKGi/Backgrounds/custom.png"
+    "background_uri": "/user/data/FPKGi/Backgrounds/custom.png"
     ```
   - Reset to default:
     ```json
@@ -119,12 +121,11 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
 - **Background Downloads**: Supports simultaneous downloads with automatic installation and rest-mode support.
 - **Foreground Downloads**: Single download support, with a queue feature planned in future updates.<br>
 
-    - You can edit the path within the app's settings, or manually through the '.config.json' like so:
+    - You can edit the path within the app's settings, or manually through the `config.json` like so:
     ```json
     "downloadPath": "/mnt/usb0/"
     ```
 
-    - When using, you must provide '/user/' before your path, unless it's in '/mnt/', for example:
     ```json
     "downloadPath": "/user/data/folder/"
     ```

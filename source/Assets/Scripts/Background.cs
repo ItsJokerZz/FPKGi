@@ -3,6 +3,7 @@ using System.Collections;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,14 +12,12 @@ using static JsonData;
 using static UOBWrapper;
 using static Utilities;
 using static Variables;
+using Application = UnityEngine.Application;
 
 public class Background : MonoBehaviour
 {
     [SerializeField]
     private RawImage background, coverImage;
-
-    [SerializeField]
-    private Text[] mainTexts = { };
 
     [Header("Content Data")]
     public RectTransform textTransform;
@@ -33,15 +32,16 @@ public class Background : MonoBehaviour
     private const float Spacing = 36.50f;
     private const float Offset = -20.00f;
 
-    public static bool initialized = false;
+    public static bool initializedApp = false;
     public static bool updateChecked = false;
 
     public static void SaveConfiguration()
     {
-        if (downloadPath.StartsWith("/data/") && !downloadPath.StartsWith("/user/"))
-            downloadPath = Path.Combine("/user", downloadPath.TrimStart('/')).Replace("\\", "/");
-
-        if (!downloadPath.EndsWith("/")) downloadPath += "/";
+        if (!isConsole)
+        {
+            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi - PS5\\DATA\\";
+            downloadPath = "D:\\Projects\\Unity\\PS4\\FPKGi - PS5\\DATA\\Downloads\\";
+        }
 
         string _sortCriteria = null;
         switch (sortCriteria)
@@ -101,6 +101,8 @@ public class Background : MonoBehaviour
                 break;
         }
 
+        var _deleteAfter = etaHEN == true || deleteAfter;
+
         var configJSON = new
         {
             FILTERING = new
@@ -120,13 +122,15 @@ public class Background : MonoBehaviour
                     directDownload,
                     downloadPath,
                     installAfter,
-                    deleteAfter,
+                    deleteAfter = _deleteAfter,
+                    deleteOnCancel
                 },
                 APPLICATION = new
                 {
                     background_uri,
                     backgroundMusic,
                     populateViaWeb,
+                    enableUpdates
                 },
                 CONTENT_URLS = new
                 {
@@ -223,7 +227,7 @@ public class Background : MonoBehaviour
                 .GetValue(config.preferences.content_urls) as string;
 
             if (!string.IsNullOrEmpty(configValue))
-                Variables.ContentURLs[key] = configValue;
+                Variables.ContentURLs[key] = URL.DecryptBase64(configValue);
         }
 
         if (config.filtering == null)
@@ -302,18 +306,17 @@ public class Background : MonoBehaviour
         directDownload = config.preferences.downloads?.directDownload ?? directDownload;
         downloadPath = config.preferences.downloads?.downloadPath ?? downloadPath;
         installAfter = config.preferences.downloads?.installAfter ?? installAfter;
-        deleteAfter = config.preferences.downloads?.deleteAfter ?? deleteAfter;
+        deleteAfter = etaHEN == true || (config.preferences.downloads?.deleteAfter ?? deleteAfter);
+        deleteOnCancel = config.preferences.downloads?.deleteOnCancel ?? deleteOnCancel;
 
         background_uri = config.preferences.application?.background_uri ?? background_uri;
         backgroundMusic = config.preferences.application?.backgroundMusic ?? backgroundMusic;
-        populateViaWeb = config.preferences.application?.populateViaWeb ?? populateViaWeb;
+        enableUpdates = config.preferences.application?.enableUpdates ?? enableUpdates;
 
-        pS.contentFilter = contentFilter;
-        pS.searchFilter = ContentHandler.searchFilter;
-        pS.populateViaWeb = populateViaWeb;
-        pS.filteredRegions = filteredRegions?.ToArray();
-        pS.sortCriteria = sortCriteria;
-        pS.ascending = ascending;
+        if (loadedOffline == true)
+            populateViaWeb = false;
+        else
+            populateViaWeb = config.preferences.application?.populateViaWeb ?? populateViaWeb;
 
         FindObjectOfType<Background>()?.LoadCustomBackground();
 
@@ -332,7 +335,7 @@ public class Background : MonoBehaviour
 
     private void OnApplicationQuit() => SaveConfiguration();
 
-    private void InitializePkgContent()
+    public void InitializePkgContent()
     {
         Variables.Content = Content;
         Transform pkgsTransform = GameObject.Find("PKGs")?.transform;
@@ -371,100 +374,48 @@ public class Background : MonoBehaviour
 
     private void Awake()
     {
-        mainTexts = new Text[BackgroundTextObjects.Length];
-
-        for (int i = 0; i < mainTexts.Length; i++)
-        {
-            mainTexts[i] = UI.FindInactiveObjectsByPath(BackgroundTextObjects[i])?.GetComponent<Text>();
-
-            if (mainTexts[i] == null)
-                Print(true, PrintType.Error, $"Text component not found for path: {BackgroundTextObjects[i]}");
-        }
-
-        Variables.mainTexts = mainTexts;
-        Variables.background = background; // might not be needed?
+        Variables.background = background;
         Variables.coverImage = coverImage;
 
+        Text versionText = UI.FindInactiveObjectsByPath("Canvas/Main/Text/Version")?.GetComponent<Text>();
         var state = nightly && !canary ? "nightly" : (canary ? "canary" : "release");
+        UI.ChangeText(versionText, $"v{UI.FormatVersion(version)}-{state} [build {buildNumber:000}]");
 
-        UI.ChangeText(mainTexts, 0, $"v{UI.FormatVersion(version)}-{state} [build {buildNumber:000}]");
-
-        if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+        if (isConsole)
         {
+            etaHEN = UOB.IsPlayStation5();
+            GoldHEN = !etaHEN;
+
             QualitySettings.vSyncCount = 1;
-            UnityEngine.Application.targetFrameRate = 60;
-
-            // language = Marshal.PtrToStringAnsi(UOB.GetSystemLanguage());
-
-            languageID = UOB.GetSystemLanguageID();
-
-            UOB.InitializeNativeDialogs();
-
-            // UOB.MountRootDirectories();
+            Application.targetFrameRate = etaHEN == true ? 120 : 60;
         }
-        else if (UnityEngine.Application.platform == RuntimePlatform.WindowsEditor)
+        else
         {
-            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
+            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi - PS5\\DATA\\";
+            downloadPath = "D:\\Projects\\Unity\\PS4\\FPKGi - PS5\\DATA\\Downloads\\";
 
             QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = 240;
         }
 
-        UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.SetActive(true);
-        UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.SetActive(true);
-        UI.FindInactiveObjectsByPath("Canvas/Main/Text/PkgCount")?.SetActive(true);
-        UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.SetActive(true);
+        if (directoryPath.Contains("/data/") && !directoryPath.StartsWith("/user/"))
+            directoryPath = Path.Combine("/user", directoryPath.TrimStart('/')).Replace("\\", "/");
 
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
-        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
+        if (downloadPath.Contains("/data/") && !downloadPath.StartsWith("/user/"))
+            downloadPath = Path.Combine("/user", downloadPath.TrimStart('/')).Replace("\\", "/");
 
-        HandleConfiguration();
-        InitializePkgContent();
+        if (!downloadPath.EndsWith("/")) downloadPath += "/";
+        if (!directoryPath.EndsWith("/")) directoryPath += "/";
 
-        initialized = true;
-    }
+        directoryPath = Path.GetFullPath(directoryPath)
+            .Replace("\\", Path.DirectorySeparatorChar.ToString())
+            .Replace("/", Path.DirectorySeparatorChar.ToString());
 
-    public static async Task<bool> CheckForAppUpdates()
-    {
-        if (!updateChecked)
-        {
-            if (updateAvailable == null)
-                updateAvailable = UnityEngine.Application.platform != RuntimePlatform.PS4 || Store.CheckForUpdates();
+        downloadPath = Path.GetFullPath(downloadPath)
+            .Replace("\\", Path.DirectorySeparatorChar.ToString())
+            .Replace("/", Path.DirectorySeparatorChar.ToString());
 
-            if (latestVersion == null)
-            {
-                double found;
-                string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
-
-                if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-                    UOB.EnterSandbox();
-
-                if (result.Contains("No valid version found in any release."))
-                    latestVersion = version;
-                else
-                {
-                    if (double.TryParse(result, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out found))
-                        latestVersion = (float)found;
-                }
-
-            }
-
-            updateChecked = true;
-        }
-
-        if (version < latestVersion || updateAvailable == true)
-        {
-            UI.FindInactiveObjectsByPath("Canvas/Details")?.SetActive(false);
-            GameObject.Find("Canvas/Main/Images/Controls/Details")?.SetActive(false);
-            GameObject.Find("Canvas/Main/Images/Controls/Main")?.SetActive(false);
-            GameObject.Find("Canvas/Main/Images/Controls/Close")?.SetActive(true);
-            UI.FindInactiveObjectsByPath("Canvas/Update")?.SetActive(true);
-
-            Text textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
-                textComponent.text = $"Latest Version: {UI.FormatVersion(latestVersion)}\nCurrent Version: {UI.FormatVersion(version)}";
-        }
-
-        return true;
+        initializedApp = true;
     }
 
     private IEnumerator UpdateDisplayInfo()
@@ -472,18 +423,26 @@ public class Background : MonoBehaviour
         float? temperature = null;
         string freeSpace = string.Empty;
 
+        Print(true, PrintType.Default, "Displaying content and system information...");
+
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/PkgCount")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.SetActive(true);
+        UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.SetActive(true);
+
+        InitializePkgContent();
+
         while (true)
         {
-            if (UnityEngine.Application.platform == RuntimePlatform.PS4)
-                UOB.BreakFromSandbox();
-
             var freeSpaceText = UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.GetComponent<Text>();
             var temperatureText = UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.GetComponent<Text>();
-           
-            if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+
+            if (isConsole)
             {
-                 temperature = UOB.GetTemperature(UOB.Temperature.CPU);
-                 freeSpace = UOB.GetDiskInfo(UOB.DiskInfo.Free);
+                temperature = UOB.GetTemperature(UOB.Temperature.CPU);
+
+                if (GoldHEN == true)
+                    freeSpace = UOB.GetDiskInfo(UOB.DiskInfo.Free);
             }
 
             bool freeSpaceChanged = freeSpaceText != null && freeSpaceText.text != freeSpace;
@@ -491,35 +450,141 @@ public class Background : MonoBehaviour
 
             if ((freeSpaceText != null && freeSpaceChanged) || (temperatureText != null && temperatureChanged))
             {
-                if (UnityEngine.Application.platform == RuntimePlatform.PS4)
+                if (isConsole)
                 {
-                    UpdateDiskInfo(freeSpaceText, UOB.DiskInfo.Free);
+                    if (GoldHEN == true)
+                        UpdateDiskInfo(freeSpaceText, UOB.DiskInfo.Free);
+                    else freeSpaceText.text = "Not Yet Supported";
+
                     UpdateTemperature(temperatureText,
-                        new Color32(119, 221, 119, 255),
-                        new Color32(255, 237, 0, 255),
-                        new Color32(156, 82, 82, 255),
-                        UOB.Temperature.CPU, 55f, 70f);
+                            new Color32(119, 221, 119, 255),
+                            new Color32(255, 237, 0, 255),
+                            new Color32(156, 82, 82, 255),
+                            UOB.Temperature.CPU, 55f, 70f);
                 }
-                else
-                {
-                    if (freeSpaceText != null)
-                        freeSpaceText.text = "Not Available";
-                    if (temperatureText != null)
-                        temperatureText.text = "Not Available";
-                }
+            }
+
+            if (!isConsole)
+            {
+                if (freeSpaceText != null)
+                    freeSpaceText.text = "Not Available";
+                if (temperatureText != null)
+                    temperatureText.text = "Not Available";
             }
 
             yield return new WaitForSeconds(1f);
         }
     }
 
+    public static async Task<bool> CheckForAppUpdates()
+    {
+        Print(true, PrintType.Default, "Checking for app updates...");
+
+        if (!updateChecked)
+        {
+            Print(true, PrintType.Default, "Fetching latest MD5 hash to compare...");
+
+            string latestHash =
+                await DownloadAsBytes("https://raw.githubusercontent.com/ItsJokerZz/FPKGi/nightly/HASH.md5");
+
+            string path;
+            if (isConsole)
+                path = "/user/app/PKGI13337/app.pkg";
+            else path = "D:\\Projects\\Unity\\PS4\\FPKGi - PS5\\BUILD\\ED1633-PKGI13337_00-0000000000000000-A0100-V0100.pkg";
+
+            string currentHash = IO.ComputeFileMD5(path);
+            if (updateAvailable == null)
+                updateAvailable = !canary && !IO.CompareMD5Hashes(currentHash, latestHash);
+
+            Print(true, PrintType.Default, $"Latest MD5: {latestHash}");
+            Print(true, PrintType.Default, $"Current MD5: {currentHash}");
+
+            if (latestVersion == null)
+            {
+                Print(true, PrintType.Default, "Checking for the latest version available...");
+
+                string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
+
+                if (result.Contains("No valid version found in any release."))
+                    latestVersion = version;
+                else
+                {
+                    double found;
+                    if (double.TryParse(result, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out found))
+                        latestVersion = (float)found;
+
+                    Print(true, PrintType.Default, $"Latest Version: {UI.FormatVersion(latestVersion)}");
+                    Print(true, PrintType.Default, $"Current Version: {UI.FormatVersion(version)}");
+                }
+            }
+
+            updateChecked = true;
+        }
+        else updateChecked = true;
+
+        if (version < latestVersion && updateAvailable == true)
+        {
+            Print(true, PrintType.Warning, $"MD5 hash and version mismatch, update required!");
+
+            UI.ShowUIState(UI.FindInactiveObjectsByPath("Canvas/Update"), UI.FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Close"));
+            Text textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
+            textComponent.text = $"Latest Version: {UI.FormatVersion(latestVersion)}\nCurrent Version: {UI.FormatVersion(version)}";
+        }
+
+        return true;
+    }
+
     private IEnumerator Start()
     {
-        while (!initialized) yield return null;
+        while (!initializedApp) yield return null;
 
-        yield return CheckForAppUpdates();
+        if (isConsole)
+        {
+            UOB.BreakFromSandbox();
+            UOB.InitializeNativeDialogs();
 
-        while (!updateChecked) yield return null;
+            float startTime = Time.time;
+
+            while (!UOB.IsFreeOfSandbox())
+                yield return null;
+
+            if (IO.DoesPathExist("/user/data/UnityOrbisBridge.log"))
+                File.Delete("/user/data/UnityOrbisBridge.log");
+
+            Print(true, PrintType.Default, $"Successfully broke from sandbox in {Time.time - startTime} seconds!");
+        }
+
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "ContentJSONs"));
+        IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Downloads"));
+
+        for (int i = 0; i < 11; i++)
+        {
+            var task = JSON.ParseJSON((ContentType)i);
+            while (!task.IsCompleted) yield return null;
+        }
+
+        var downloadTask =
+            DownloadAsBytes("https://github.com/ItsJokerZz/FPKGi/");
+
+        float downloadStart = Time.time;
+
+        yield return new WaitUntil(() =>
+        downloadTask.IsCompleted ||
+        (Time.time - downloadStart) >= 5);
+
+        if (string.IsNullOrEmpty(downloadTask.Result))
+        {
+            loadedOffline = true;
+
+            if (GoldHEN == true)
+                UOB.TextNotify(222, "Please connect to the internet and/or use local connection content!");
+
+            Print(true, PrintType.Warning, "Loaded offline, toggling \"Populate Via Web\" to prevent hanging...");
+        }
+        else
+            loadedOffline = false;
 
         StartCoroutine(UpdateDisplayInfo());
     }

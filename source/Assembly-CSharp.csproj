@@ -9,7 +9,7 @@
     <ProductVersion>10.0.20506</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
     <RootNamespace></RootNamespace>
-    <ProjectGuid>{E6CDB0E8-9CF7-6F96-8CB9-DDBDF7B679ED}</ProjectGuid>
+    <ProjectGuid>{8761DBE8-12CA-8F10-671F-3DE65359CD0A}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <AssemblyName>Assembly-CSharp</AssemblyName>
@@ -86,11 +86,11 @@
  <Reference Include="UnityEngine.SpatialTracking">
  <HintPath>C:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/UnitySpatialTracking/RuntimeEditor/UnityEngine.SpatialTracking.dll</HintPath>
  </Reference>
- <Reference Include="UnityOrbisBridge">
- <HintPath>D:/Projects/Unity/PS4/FPKGi/Assets/Plugins/UnityOrbisBridge.dll</HintPath>
- </Reference>
  <Reference Include="Newtonsoft.Json">
- <HintPath>D:/Projects/Unity/PS4/FPKGi/Assets/UnityPackages/JsonNet/Newtonsoft.Json.dll</HintPath>
+ <HintPath>D:/Projects/Unity/PS4/FPKGi - PS5/Assets/Plugins/Newtonsoft.Json.dll</HintPath>
+ </Reference>
+ <Reference Include="UnityOrbisBridge">
+ <HintPath>D:/Projects/Unity/PS4/FPKGi - PS5/Assets/Plugins/UnityOrbisBridge.dll</HintPath>
  </Reference>
  <Reference Include="UnityEngine.Analytics">
  <HintPath>C:/Users/Dakota/AppData/LocalLow/Unity/cache/packages/packages.unity.com/com.unity.analytics@1.0.1/UnityEngine.Analytics.dll</HintPath>

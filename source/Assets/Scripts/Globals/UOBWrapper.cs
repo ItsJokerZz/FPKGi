@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -46,7 +47,8 @@ public static class UOBWrapper
                 if (coldColor.HasValue || normalColor.HasValue || hotColor.HasValue)
                     textObject.color = DetermineColor(celsiusTemp, coldColor, normalColor, hotColor, min, max);
 
-                textObject.text = $"{sensorString}: {celsiusTemp} °C / {fahrenheitTemp ?? 0f} °F";
+                textObject.text = $"{sensorString}: {celsiusTemp.ToString(CultureInfo.InvariantCulture)}" +
+                    $" °C / {fahrenheitTemp.Value.ToString(CultureInfo.InvariantCulture)} °F";
             }
 
             public static void Update(Text textObject, UOB.Temperature temperature, Color? coldColor = null, Color? normalColor = null, Color? hotColor = null, float min = 55f, float max = 70f)
@@ -54,7 +56,6 @@ public static class UOBWrapper
                 if (Application.platform != RuntimePlatform.PS4) return;
 
                 string sensorString = temperature == UOB.Temperature.CPU ? "CPU" : "SoC";
-
                 float? celsiusTemp = UOB.GetTemperature(temperature, false);
                 float? fahrenheitTemp = UOB.GetTemperature(temperature, true);
 
@@ -180,44 +181,60 @@ public static class UOBWrapper
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
             !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
-            Print($"Invalid URL format: {url}", PrintType.Default);
+            Print($"Invalid URL format: {url}", PrintType.Error);
             return null;
         }
 
         if (Application.platform == RuntimePlatform.PS4)
         {
-            UOB.BreakFromSandbox();
-
             int size;
             IntPtr ptr = UOB.DownloadAsBytes(url, out size);
+           
             byte[] bytes = new byte[size];
             Marshal.Copy(ptr, bytes, 0, size);
 
             return Encoding.UTF8.GetString(bytes).Replace("\r", "").Replace("\n", "");
         }
 
-        using (UnityWebRequest request = UnityWebRequest.Get(url))
+        int maxRedirects = 5;
+        for (int i = 0; i < maxRedirects; i++)
         {
-            var operation = request.SendWebRequest();
-            while (!operation.isDone)
-                await Task.Yield();
-
-            if (request.isNetworkError || request.isHttpError)
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
             {
-                Print($"Failed to download from {url}:\n" +
-                      $"Error: {request.error}", PrintType.Error);
-                return null;
-            }
+                var operation = request.SendWebRequest();
+                while (!operation.isDone)
+                    await Task.Yield();
 
-            if (request.downloadHandler.data == null || request.downloadHandler.data.Length == 0)
-            {
-                Print("Download returned empty response", PrintType.Error);
-                return null;
-            }
+                if (request.isNetworkError || request.isHttpError)
+                {
+                    Print($"Failed to download from {url}:\nError: {request.error}", PrintType.Error);
+                    return null;
+                }
 
-            return Encoding.UTF8.GetString(request.downloadHandler.data).Replace("\r", "").Replace("\n", "");
+                if (request.responseCode >= 300 && request.responseCode < 400)
+                {
+                    string newUrl = request.GetResponseHeader("Location");
+                    if (!string.IsNullOrEmpty(newUrl))
+                    {
+                        url = newUrl.StartsWith("http") ? newUrl : new Uri(new Uri(url), newUrl).ToString();
+                        continue;
+                    }
+                }
+
+                if (request.downloadHandler.data == null || request.downloadHandler.data.Length == 0)
+                {
+                    Print("Download returned empty response", PrintType.Error);
+                    return null;
+                }
+
+                return Encoding.UTF8.GetString(request.downloadHandler.data).Replace("\r", "").Replace("\n", "");
+            }
         }
+
+        Print($"Too many redirects: {url}", PrintType.Error);
+        return null;
     }
+
 
     public static bool SetImageFromURL(string url, ref RawImage image)
     {
@@ -228,7 +245,7 @@ public static class UOBWrapper
         if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
             !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
         {
-            Print($"Invalid URL format: {url}", PrintType.Default);
+            Print($"Invalid URL format: {url}", PrintType.Error);
             return false;
         }
 
