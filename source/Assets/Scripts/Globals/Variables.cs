@@ -4,7 +4,7 @@ using UnityEngine.UI;
 
 public class Variables
 {
-    public static int buildNumber = 251;
+    public static int buildNumber = 252;
     public static float version = 0.877f;
 
     public static bool canary = false;

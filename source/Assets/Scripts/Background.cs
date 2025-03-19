@@ -523,14 +523,14 @@ public class Background : MonoBehaviour
         }
         else updateChecked = true;
 
-      //  if (version < latestVersion && updateAvailable == true)
-      //  {
+        if (version < latestVersion && updateAvailable == true)
+        {
             Print(true, PrintType.Warning, $"MD5 hash and version mismatch, update required!");
 
             UI.ShowUIState(UI.FindInactiveObjectsByPath("Canvas/Update"), UI.FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Close"));
             Text textComponent = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions")?.GetComponent<Text>();
             textComponent.text = $"Latest Version: {UI.FormatVersion(latestVersion)}\nCurrent Version: {UI.FormatVersion(version)}";
-     //   }
+        }
 
         return true;
     }
