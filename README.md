@@ -1,4 +1,4 @@
-# FPKGi <img alt="GitHub Tag" src="https://img.shields.io/github/v/tag/itsjokerzz/fpkgi"> - A Server-Based PS4 & PS5 Content Installer
+# FPKGi - A Server-Based PS4 & PS5 Content Installer
 
 > [!NOTE]
 > FPKGi (Fake PKG Installer) is an open-source homebrew app for installing modified .pkg files on the PS4 and PS5. Inspired by the original PKGi for PSP, Vita, and PS3, it enables you to manage and install content via .json files—from your device, a local network, or the web—and supports package downloads from your private server. Designed for educational and personal use, FPKGi promotes game preservation in the PlayStation homebrew scene by streamlining content browsing, downloading, and installation. For best performance, offload your files to a NAS and run a web server with Node.js or Python, then pass the content URL to your .json files.
