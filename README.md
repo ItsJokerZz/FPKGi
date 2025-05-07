@@ -6,6 +6,8 @@
 > [!IMPORTANT]  
 > Use FPKGi responsibly and in accordance with the laws of your country. This tool is intended solely for legal, educational, and personal use. Do not use FPKGi for piracy or any other illegal activities. Always download FPKGi from our official GitHub repository, via pkg-zone.com, or through the Homebrew Store, and avoid third-party sources. We assume no responsibility to any damage from malicious downloads and/or legal issues.
 
+#### Important Notice: On PS5, an internet connection is currently required for the app to load. This will be resolved with the next **"etaHEN"** release. Until then, please ensure you have an active internet connection at launch.
+
 ## Setup Instructions
 #### Download the Latest Version:
    - Get the latest compiled package from the [Releases](https://github.com/ItsJokerZz/FPKGi/releases) or visit [pkg-zone.com](https://pkg-zone.com/details/FPKGI13337).
