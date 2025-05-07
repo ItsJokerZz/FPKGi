@@ -18,10 +18,13 @@ public class ContentHandler : MonoBehaviour
     public static int removedCount = 0;
     public static int selectedIndex = 0;
     public static int contentScroll = 0;
-    public static int itemsPerPage = 25;
+    public static int itemsPerPage = 30;
     public static int currentPage = 0;
+    
+    public Text pkgCount;
 
-    public Text pkgCount, currentInt;
+    public Font Multi, Arabic, Korean, Asian;
+
     public static PKG currentPkg;
 
     public static int allCachedCount = 0;
@@ -99,6 +102,15 @@ public class ContentHandler : MonoBehaviour
 
         public static List<KeyValuePair<string, GameContent>> ApplyFilter(List<KeyValuePair<string, GameContent>> itemsList)
         {
+            // Filter out PS5 content based on conditions
+            if (GoldHEN == true)
+            {
+                itemsList = itemsList.Where(item =>
+                    !item.Key.Contains("PS5") &&
+                    !item.Value.name.Contains("PS5"))
+                    .ToList();
+            }
+
             if (!string.IsNullOrEmpty(searchFilter))
             {
                 string filterLower = searchFilter.ToLower().Trim();
@@ -144,7 +156,7 @@ public class ContentHandler : MonoBehaviour
                        (filteredRegions.Contains("Europe") && region == "EUR") ||
                        (filteredRegions.Contains("Japan") && region == "JAP") ||
                        (filteredRegions.Contains("USA") && region == "USA") ||
-                       region == "UNK" || region == "???" || region == "ALL" || 
+                       region == "UNK" || region == "???" || region == "ALL" ||
                        string.IsNullOrEmpty(region);
             }).ToList();
         }
@@ -195,7 +207,7 @@ public class ContentHandler : MonoBehaviour
                             switch (region)
                             {
                                 case "???": return 0;
-                                case "ALL": return 1; 
+                                case "ALL": return 1;
                                 case "ASIA": return 2;
                                 case "EUR": return 3;
                                 case "JAP": return 4;
@@ -311,6 +323,12 @@ public class ContentHandler : MonoBehaviour
                     UI.ChangeText(package.Title, titleToDisplay);
                     UI.ChangeText(package.Size, IO.FormatByteString(item.Value.size));
 
+                    UI.SetFontByText(ref package.Title);
+
+                    if (package.Title.font == FindObjectOfType<ContentHandler>()?.Arabic)
+                        package.Title.fontSize = 18;
+                    else package.Title.fontSize = 28;
+
                     currentIndex++;
                 }
 
@@ -395,7 +413,7 @@ public class ContentHandler : MonoBehaviour
         {
             currentPage = Mathf.Max(page, 0);
             int startIndex = currentPage * itemsPerPage;
-         
+
             foreach (var pkg in Content.PKGs)
             {
                 if (pkg != null)
@@ -477,9 +495,9 @@ public class ContentHandler : MonoBehaviour
         public static async void UpdatePkgCount()
         {
             bool needUpdate =
-                toggleBackToLocal 
-                || ControlMenu.reloadTriggered 
-                || ControlMenu.fullyInitialized
+                toggleBackToLocal
+                || ControlMenu.reloadTriggered
+                || Background.fullyInitialized
                 || (Background.initializedApp
                 && initialCountUpdated == null);
 
@@ -586,7 +604,8 @@ public class ContentHandler : MonoBehaviour
                       .Where(item => item.Value != null &&
                                      !string.IsNullOrEmpty(item.Value.title_id) &&
                                      !string.IsNullOrEmpty(item.Value.name) &&
-                                     !string.IsNullOrEmpty(item.Value.size))
+                                     !string.IsNullOrEmpty(item.Value.size) &&
+                                     !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
                       .Count() : 0;
 
             int currentCount = contentTypeCache.ContainsKey(currentType)
@@ -594,7 +613,8 @@ public class ContentHandler : MonoBehaviour
                       .Where(item => item.Value != null &&
                                      !string.IsNullOrEmpty(item.Value.title_id) &&
                                      !string.IsNullOrEmpty(item.Value.name) &&
-                                     !string.IsNullOrEmpty(item.Value.size))
+                                     !string.IsNullOrEmpty(item.Value.size) &&
+                                     !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
                       .Count() : 0;
 
             var contentHandler = FindObjectOfType<ContentHandler>();
@@ -605,7 +625,8 @@ public class ContentHandler : MonoBehaviour
                     .Where(item => item.Value != null &&
                                    !string.IsNullOrEmpty(item.Value.title_id) &&
                                    !string.IsNullOrEmpty(item.Value.name) &&
-                                   !string.IsNullOrEmpty(item.Value.size))
+                                   !string.IsNullOrEmpty(item.Value.size) &&
+                                   !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
                     .Count();
 
                 int leftValue = Mathf.Clamp(filteredAllCount - removedCount, 0, filteredAllCount - removedCount);

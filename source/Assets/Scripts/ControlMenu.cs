@@ -4,7 +4,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityOrbisBridge;
@@ -24,14 +26,7 @@ public class ControlMenu : MonoBehaviour
         detailsCanvas,
         downloadCanvas,
         cancelCanvas,
-        updateCanvas,
-        closeCanvas,
-
-        mainControls,
-        menuControls,
-        detailControls,
-        downloadControls,
-        closeControls;
+        updateCanvas;
 
     [SerializeField]
     private float
@@ -47,34 +42,34 @@ public class ControlMenu : MonoBehaviour
     private AudioSource audioSource;
 
     private bool
-        menuLoaded = false,
-        isDownloading = false;
+        menuLoaded = false, isDownloading = false;
 
-    public static bool
-        reloadTriggered = false,
-        fullyInitialized = false;
+    public static bool reloadTriggered = false;
+
+    private float lastCirclePressTime = -1;
+    private bool isDoublePress = false;
 
     private Coroutine scrollCoroutine;
     private Coroutine downloadCoroutine;
 
+    public string sanitizedFilename;
+
     #endregion
 
     #region Coroutine Handling
-    private IEnumerator InitializeCoroutine() // move to background, and move a lot to utilities
+    private IEnumerator InitializeCoroutine()
     {
         while (!initializedApp)
             yield return null;
 
-
         audioSource = GetComponent<AudioSource>();
-
         menuTexts = new Text[MenuTextObjects.Length];
 
         for (int i = 0; i < menuTexts.Length; i++)
-            menuTexts[i] = 
+            menuTexts[i] =
                 UI.FindInactiveObjectsByPath(MenuTextObjects[i])?.GetComponent<Text>();
 
-        while (loadedOffline == null)
+        while (loadedOffline == null || !fullyInitialized)
             yield return null;
 
         HandleConfiguration();
@@ -83,47 +78,13 @@ public class ControlMenu : MonoBehaviour
         if (backgroundMusic)
             audioSource.Play();
 
-        if (enableUpdates)
-            yield return CheckForAppUpdates();
-
-        while (true)
-        {
-            var contentSort = UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.gameObject;
-            var pkgCount = UI.FindInactiveObjectsByPath("Canvas/Main/Text/PkgCount")?.gameObject;
-            var temperature = UI.FindInactiveObjectsByPath("Canvas/Main/Text/Temperature")?.gameObject;
-            var freeSpace = UI.FindInactiveObjectsByPath("Canvas/Main/Text/FreeSpace")?.gameObject;
-
-            bool contentSortActive, pkgCountActive, temperatureActive, freeSpaceActive;
-
-            do
-            {
-                contentSortActive = contentSort?.activeInHierarchy ?? false;
-                pkgCountActive = pkgCount?.activeInHierarchy ?? false;
-                temperatureActive = temperature?.activeInHierarchy ?? false;
-                freeSpaceActive = freeSpace?.activeInHierarchy ?? false;
-
-                yield return null;
-            }
-
-            while (!(contentSortActive || pkgCountActive || temperatureActive || freeSpaceActive));
-
-            break;
-        }
-
-        if (isConsole)
-        {
-            Print(true, PrintType.Default, $"App is currently running on a {(etaHEN == true ? "PS5 using etaHEN" : "PS4 using GoldHEN")}.");
-
-            if (etaHEN == true)
-                Print(true, PrintType.Warning, $"Since running on PS5, \"Delete After Install\" will always be toggled true currently!");
-        }
-
         Background background =
             FindObjectOfType<Background>();
         background?.InitializePkgContent();
         UIManagement.HighlightCurrentPkg();
 
-        fullyInitialized = true;
+        if (enableUpdates)
+            yield return CheckForAppUpdates();
 
         yield return null;
     }
@@ -141,7 +102,7 @@ public class ControlMenu : MonoBehaviour
 
         isDownloading = false;
 
-        UI.ShowUIState(null, mainControls);
+        UI.ShowUIState(null);
 
         if (downloadCanvas != null)
         {
@@ -183,12 +144,16 @@ public class ControlMenu : MonoBehaviour
 
         isDownloading = true;
 
-        Text name = downloadCanvas.transform.Find("Text/Title")?.GetComponent<Text>();
+        var name = UI.FindInactiveObjectsByPath("Canvas/Download/Text/Title")?.GetComponent<Text>();
 
         UI.ChangeText(name, currentContentItem.Value.name);
-        UI.ShowUIState(downloadCanvas, downloadControls);
 
-        scrollCoroutine = StartCoroutine(ScrollText(name, currentContentItem.Value.name));
+        UI.SetFontByText(ref name);
+        if (name.font == FindObjectOfType<ContentHandler>()?.Arabic)
+            name.fontSize = 28;
+        else name.fontSize = 36;
+
+        UI.ShowUIState(downloadCanvas);
 
         while (isDownloading && !hasDownloadCompleted)
         {
@@ -206,6 +171,7 @@ public class ControlMenu : MonoBehaviour
                 float parsedSpeed;
                 float.TryParse(Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("speed")),
                     NumberStyles.Float, CultureInfo.InvariantCulture, out parsedSpeed);
+
                 networkSpeed = parsedSpeed.ToString("0.##", CultureInfo.InvariantCulture);
 
                 totalFileSize = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("filesize"));
@@ -243,15 +209,18 @@ public class ControlMenu : MonoBehaviour
                     ? writeSpeed : (ulong)(ewmaAlpha * writeSpeed + (1 - ewmaAlpha) * smoothedWriteSpeed);
 
                 previousDownloadedBytes = downloadedBytesValue;
+
                 lastWriteTimestamp = Time.time;
 
                 ulong remainingBytes = totalFileSizeValue - downloadedBytesValue;
                 float effectiveSpeed = Math.Min(smoothedNetworkSpeed, smoothedWriteSpeed);
 
-                string formattedEstimatedTimeRemaining = FormatTime(effectiveSpeed > 0 ? remainingBytes / effectiveSpeed : 0);
+                string formattedEstimatedTimeRemaining
+                    = FormatTime(effectiveSpeed > 0 ? remainingBytes / effectiveSpeed : 0);
 
                 float progressAsFloat;
                 float.TryParse(progressPercentage, out progressAsFloat);
+
                 progressAsFloat /= 100f;
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/Elapsed")?.GetComponent<Text>(),
@@ -264,7 +233,8 @@ public class ControlMenu : MonoBehaviour
                     $"{progressPercentage}%");
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/DownloadSpeed")?.GetComponent<Text>(),
-                    $"{FormatSpeed(smoothedNetworkSpeed, true)} - {IO.FormatByteString(downloadedBytesValue)}" +
+                    $"{FormatSpeed(smoothedNetworkSpeed, true)}" +
+                    $" - {IO.FormatByteString(downloadedBytesValue)}" +
                     $" of {IO.FormatByteString(totalFileSizeValue)}");
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/RemainingTime")?.GetComponent<Text>(),
@@ -273,8 +243,7 @@ public class ControlMenu : MonoBehaviour
                 var progressBar = UI.FindInactiveObjectsByPath("Canvas/Download/ProgressBar/Progress")?.GetComponent<RectTransform>();
 
                 progressBar.pivot = new Vector2(0f, 0.5f);
-                progressBar.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal,
-                    Mathf.Lerp(10.55f, 735.64f, progressAsFloat) - 10.56f);
+                progressBar.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, Mathf.Lerp(10.55f, 735.64f, progressAsFloat) - 10.56f);
 
                 progressBar.anchoredPosition = new Vector2(10.56f, progressBar.anchoredPosition.y);
                 UI.FindInactiveObjectsByPath("Canvas/Download/ProgressBar")?.SetActive(true);
@@ -287,30 +256,78 @@ public class ControlMenu : MonoBehaviour
 
         ResetDownloadState();
 
-        string sanitizedFilename = currentContentItem.Value.name;
-        foreach (char invalidChar in Path.GetInvalidFileNameChars())
-            sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
+        string downloadedFile = $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}";
 
-        if (sanitizedFilename.Length > 255)
-            sanitizedFilename = sanitizedFilename.Substring(0, 255);
-
-        string downloadedFile = $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";
-
-        bool isValidPackage = IO.IsValidPackageFile(downloadedFile);
-        if (isConsole && !isValidPackage)
+        if (IO.IsValidZipArchiveFile(downloadedFile + ".pkg"))
         {
-            try
+            string archiveFile = downloadedFile + ".zip";
+            File.Move(downloadedFile + ".pkg", archiveFile);
+            IO.EnsureDirectoryExists(downloadedFile);
+            UOB.ExtractZipFile(archiveFile, downloadedFile);
+
+            if (File.Exists(archiveFile))
+                File.Delete(archiveFile);
+
+            var pkgFiles = Directory.GetFiles(downloadedFile, "*.pkg", SearchOption.AllDirectories)
+                .OrderBy(f =>
+                {
+                    string directory = Path.GetDirectoryName(f);
+                    string dirName = Path.GetFileName(directory);
+                    var dirMatch = Regex.Match(dirName, @"\d+");
+                    return dirMatch.Success ? int.Parse(dirMatch.Value) : int.MaxValue;
+                })
+                .OrderBy(f =>
+                {
+                    string fileName = Path.GetFileNameWithoutExtension(f);
+                    var fileMatch = Regex.Match(fileName, @"\d+");
+                    return fileMatch.Success ? int.Parse(fileMatch.Value) : int.MaxValue;
+                })
+                .ThenBy(f => f).ToList();
+
+            foreach (string pkgFile in pkgFiles)
             {
-                File.Delete(downloadedFile);
-                Print(true, PrintType.Default, "Invalid file header, not installing, and deleting...");
-            }
-            catch { /* do nothing */ }
-        }
+                bool isValidPackage = IO.IsValidPackageFile(pkgFile);
 
-        if (hasDownloadCompleted && !downloadErrorOccurred && (isConsole && installAfter) && isValidPackage)
+                if (!isValidPackage)
+                {
+                    try
+                    {
+                        File.Delete(pkgFile);
+                        Print(true, PrintType.Default, "Invalid file header, not installing, and deleting...");
+                    }
+                    catch { /* do nothing */ }
+                }
+
+                if ((hasDownloadCompleted && !downloadErrorOccurred && isValidPackage) && (isConsole && installAfter))
+                {
+                    Print(true, PrintType.Default, $"Installing package {pkgFile}");
+                    UOB.InstallLocalPackage(pkgFile, currentContentItem.Value.name, deleteAfter);
+
+                    if (GoldHEN == true && deleteAfter)
+                        Directory.Delete(downloadedFile);
+                }
+            }
+        }
+        else
         {
-            Print(true, PrintType.Default, $"Installing package [{downloadedFile}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
-            UOB.InstallLocalPackage(downloadedFile, currentContentItem.Value.name, deleteAfter);
+            bool isValidPackage = IO.IsValidPackageFile(downloadedFile + ".pkg");
+            if (!isValidPackage)
+            {
+                try
+                {
+                    File.Delete(downloadedFile + ".pkg");
+                    Print(true, PrintType.Default, "Invalid file header, not installing, and deleting...");
+                }
+                catch { /* do nothing */ }
+            }
+
+            if (hasDownloadCompleted && !downloadErrorOccurred && (isConsole && installAfter) && isValidPackage)
+            {
+                Print(true, PrintType.Default, $"Installing package [{downloadedFile + ".pkg"}] " +
+                    $"from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
+
+                UOB.InstallLocalPackage(downloadedFile + ".pkg", currentContentItem.Value.name, deleteAfter);
+            }
         }
 
         yield return null;
@@ -322,7 +339,6 @@ public class ControlMenu : MonoBehaviour
         return TimeSpan.FromSeconds(totalSeconds).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
     }
 
-    // stop using floats, im dumb for this (use unlong)
     public string FormatSpeed(float bytesPerSecond, bool displayInBits)
     {
         int unitIndex = 0;
@@ -392,8 +408,7 @@ public class ControlMenu : MonoBehaviour
             float verticalInput =
               Input.GetAxis("LStick-Y") + Input.GetAxis("Dpad-Y") + Input.GetAxis("Mouse-Y");
 
-            if (!closeCanvas.activeSelf && !downloadCanvas.activeSelf
-                && !cancelCanvas.activeSelf && !updateCanvas.activeSelf)
+            if (!downloadCanvas.activeSelf && !cancelCanvas.activeSelf && !updateCanvas.activeSelf)
             {
                 if (Input.GetButtonDown("Triangle"))
                     ToggleMenu(false);
@@ -410,7 +425,7 @@ public class ControlMenu : MonoBehaviour
 
                     if (detailsCanvas.activeSelf)
                     {
-                        UI.ShowUIState(null, mainControls);
+                        UI.ShowUIState(null);
                         return;
                     }
                     else
@@ -459,7 +474,7 @@ public class ControlMenu : MonoBehaviour
                             }
                         }
 
-                        UI.ShowUIState(detailsCanvas, detailControls);
+                        UI.ShowUIState(detailsCanvas);
 
                         if (detailsCanvas == null) return;
 
@@ -474,8 +489,14 @@ public class ControlMenu : MonoBehaviour
                         Text release = textTransform.Find("Release")?.GetComponent<Text>();
 
                         UI.ChangeText(name, currentContentItem.Value.name);
+                        UI.SetFontByText(ref name);
+
+                        if (name.font == FindObjectOfType<ContentHandler>()?.Arabic)
+                            name.fontSize = 32;
+                        else name.fontSize = 42;
+
                         UI.ChangeText(title_id, $"Title ID: {currentContentItem.Value.title_id} " +
-                            $"[{currentContentItem.Value.region}]");
+                                $"[{currentContentItem.Value.region}]");
 
                         UI.ChangeText(version, $"Package Version: {currentContentItem.Value.version}");
                         UI.ChangeText(min_fw, $"Required Firmware: {currentContentItem.Value.min_fw}");
@@ -499,8 +520,7 @@ public class ControlMenu : MonoBehaviour
                 }
                 else
                 {
-                    if (!closeCanvas.activeSelf && !detailsCanvas.activeSelf
-                        && !downloadCanvas.activeSelf && !cancelCanvas.activeSelf)
+                    if (!detailsCanvas.activeSelf && !downloadCanvas.activeSelf && !cancelCanvas.activeSelf)
                     {
                         if (Input.GetButtonDown("L1")) ScrollOption(-1);
                         if (Input.GetButtonDown("R1")) ScrollOption(1);
@@ -515,7 +535,7 @@ public class ControlMenu : MonoBehaviour
                         {
                             if (!isConsole) return;
 
-                            IntPtr kbInput = UOB.GetKeyboardInput(SearchText, "");
+                            IntPtr kbInput = UOB.GetKeyboardInput("Search Content (By name or title ID)", "");
                             string kbOutput = Marshal.PtrToStringAnsi(kbInput);
 
                             if (string.IsNullOrEmpty(kbOutput) || kbOutput == "NULL")
@@ -594,15 +614,14 @@ public class ControlMenu : MonoBehaviour
 
             if (Input.GetButtonDown("X"))
             {
-                string sanitizedFilename = currentContentItem.Value.name;
+                sanitizedFilename =
+                   IO.SanitizeFilename(currentContentItem.Value.name);
 
-                foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                    sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
+                if (UI.IsNonEnglish(sanitizedFilename))
+                    sanitizedFilename = $"content-{contentScroll+1}";
 
-                if (sanitizedFilename.Length > 255)
-                    sanitizedFilename = sanitizedFilename.Substring(0, 255);
-
-                string packagePath = $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";
+                string packagePath =
+                    $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";
 
                 if (menuLoaded)
                     ExecuteMenuItemAction();
@@ -624,7 +643,7 @@ public class ControlMenu : MonoBehaviour
                             downloadCoroutine = null;
                         }
 
-                        UI.ShowUIState(null, mainControls);
+                        UI.ShowUIState(null);
 
                         isDownloading = false;
 
@@ -636,23 +655,8 @@ public class ControlMenu : MonoBehaviour
                         if (isConsole)
                             UOB.UpdateViaHomebrewStore("PKGI13337");
 
-                        UI.ShowUIState(null, mainControls);
+                        UI.ShowUIState(null);
 
-                        return;
-                    }
-
-                    if (closeCanvas.activeSelf)
-                    {
-                        SaveConfiguration();
-
-                        UI.ShowUIState(null, mainControls);
-
-                        if (isConsole)
-                            UOB.ExitApplication();
-
-#if UNITY_EDITOR_WIN
-                        UnityEditor.EditorApplication.isPlaying = false;
-#endif
                         return;
                     }
 
@@ -681,8 +685,17 @@ public class ControlMenu : MonoBehaviour
                             {
                                 if (isConsole)
                                     UOB.DownloadPkgFile(downloadlink, downloadPath, $"[{currentContentItem.Value.title_id}] {sanitizedFilename}", true, "NULL");
+                                Text name = downloadCanvas.transform.Find("Text/Title")?.GetComponent<Text>();
 
                                 downloadCoroutine = StartCoroutine(UpdateDownloadProgress());
+
+                                if (scrollCoroutine != null)
+                                {
+                                    StopCoroutine(scrollCoroutine);
+                                    scrollCoroutine = null;
+                                }
+
+                                scrollCoroutine = StartCoroutine(ScrollText(name, currentContentItem.Value.name));
                             }
                         }
                         else
@@ -697,44 +710,67 @@ public class ControlMenu : MonoBehaviour
             if (Input.GetButtonDown("Circle"))
             {
                 cooldownTimer = inputCooldown;
+                float currentTime = Time.unscaledTime;
 
-                if (cancelCanvas.activeSelf)
+                if (currentTime - lastCirclePressTime <= 0.4f)
                 {
-                    UI.ShowUIState(downloadCanvas, downloadControls);
-                    return;
-                }
+                    isDoublePress = true;
+                    SaveConfiguration();
 
-                if (updateCanvas.activeSelf)
-                {
-                    UI.ShowUIState(null, mainControls);
-                    return;
-                }
+                    if (isConsole)
+                        UOB.ExitApplication();
 
-                if (menuCanvas.activeSelf)
-                    ToggleMenu(true);
-                else if (detailsCanvas.activeSelf)
-                {
-                    UI.ShowUIState(null, mainControls);
-
-                    if (scrollCoroutine != null)
-                    {
-                        StopCoroutine(scrollCoroutine);
-                        scrollCoroutine = null;
-                    }
+#if UNITY_EDITOR_WIN
+                    UnityEditor.EditorApplication.isPlaying = false;
+#endif
                 }
-                else if (closeCanvas.activeSelf || cancelCanvas.activeSelf)
-                {
-                    if (isDownloading)
-                        UI.ShowUIState(downloadCanvas, downloadControls);
-                    else
-                        UI.ShowUIState(null, mainControls);
-                }
-                else if (isDownloading)
-                    UI.ShowUIState(cancelCanvas, closeControls);
                 else
-                    UI.ShowUIState(closeCanvas, closeControls);
+                {
+                    isDoublePress = false;
+                }
+
+                lastCirclePressTime = currentTime;
+
+                if (!isDoublePress)
+                {
+                    if (cancelCanvas.activeSelf)
+                    {
+                        UI.ShowUIState(downloadCanvas);
+                        return;
+                    }
+
+                    if (updateCanvas.activeSelf)
+                    {
+                        UI.ShowUIState(null);
+                        return;
+                    }
+
+                    if (menuCanvas.activeSelf)
+                        ToggleMenu(true);
+                    else if (detailsCanvas.activeSelf)
+                    {
+                        UI.ShowUIState(null);
+
+                        if (scrollCoroutine != null)
+                        {
+                            StopCoroutine(scrollCoroutine);
+                            scrollCoroutine = null;
+                        }
+                    }
+                    else if (cancelCanvas.activeSelf)
+                    {
+                        if (isDownloading)
+                            UI.ShowUIState(downloadCanvas);
+                        else
+                            UI.ShowUIState(null);
+                    }
+                    else if (isDownloading)
+                        UI.ShowUIState(cancelCanvas);
+                }
             }
+
         }
+
     }
 
     private void NavigateMenu(float verticalInput)
@@ -753,8 +789,7 @@ public class ControlMenu : MonoBehaviour
     private void ScrollOption(float horizontalInput, int textArrayInt = -1)
     {
         if (textArrayInt == -1) textArrayInt = selectedIndex;
-
-        string currentText = mainControls.activeSelf ? null : menuTexts[textArrayInt].text;
+        string currentText = menuTexts[textArrayInt].text;
 
         if (menuLoaded && textArrayInt == 9)
         {
@@ -900,7 +935,7 @@ public class ControlMenu : MonoBehaviour
 
                 case 17: // make UOB HELPER FUNC FOR THIS (KB INPUT HANDLING)
                     if (!isConsole) return;
-                    IntPtr kbInput = UOB.GetKeyboardInput(setDownloadPath, downloadPath);
+                    IntPtr kbInput = UOB.GetKeyboardInput("Set Download Location...", downloadPath);
                     string kbOutput = Marshal.PtrToStringAnsi(kbInput);
 
                     if (string.IsNullOrEmpty(kbOutput) ||
@@ -1027,10 +1062,10 @@ public class ControlMenu : MonoBehaviour
         menuLoaded = !menuLoaded;
 
         if (menuLoaded)
-            UI.ShowUIState(menuCanvas, menuControls);
+            UI.ShowUIState(menuCanvas);
         else
         {
-            UI.ShowUIState(null, mainControls);
+            UI.ShowUIState(null);
 
             if (resetSettings)
             {
@@ -1082,8 +1117,13 @@ public class ControlMenu : MonoBehaviour
 
         if (currentIndex == -1) currentIndex = contentFilter;
 
-        int newIndex = scrollRight ? (currentIndex + 1) % contentOptions.Length :
-          (currentIndex - 1 + contentOptions.Length) % contentOptions.Length;
+        int newIndex;
+        do
+        {
+            newIndex = scrollRight ? (currentIndex + 1) % contentOptions.Length :
+                (currentIndex - 1 + contentOptions.Length) % contentOptions.Length;
+            currentIndex = newIndex;
+        } while (GoldHEN == true && contentOptions[newIndex] == "PS5");
 
         contentFilter = newIndex;
 
@@ -1148,8 +1188,7 @@ public class ControlMenu : MonoBehaviour
 
         while (true)
         {
-            string currentText =
-            $"{contentOptions[contentFilter]}";
+            string currentText = $"{contentOptions[contentFilter]}";
 
             HandleUserInput();
 
@@ -1157,11 +1196,11 @@ public class ControlMenu : MonoBehaviour
                 cooldownTimer = Mathf.Clamp(cooldownTimer - Time.deltaTime, 0, inputCooldown);
 
             var textComponent =
-                UI.FindInactiveObjectsByPath("Canvas/Main/Text/ContentSort")?.GetComponent<Text>();
+                UI.FindInactiveObjectsByPath("Canvas/Main/ContentSort")?.GetComponent<Text>();
 
             if (currentText != previousText)
             {
-                textComponent.text = currentText;
+                textComponent.text = $"{currentText} Content";
                 previousText = currentText;
                 reloadTriggered = true;
             }

@@ -4,78 +4,22 @@ using UnityEngine.UI;
 
 public class Variables
 {
-    public static int buildNumber = 252;
-    public static float version = 0.877f;
+    public static float version = 1.000f;
+    public static int buildNumber = 0023;
 
     public static bool canary = false;
-    public static bool nightly = true;
+    public static bool nightly = false;
 
     public static bool? GoldHEN = null;
     public static bool? etaHEN = null;
 
     public static bool? loadedOffline = null;
     public static bool? updateAvailable = null;
-
     public static float? latestVersion = null;
 
     public static bool isConsole =
         Application.platform !=
         RuntimePlatform.WindowsEditor;
-
-    #region Configuration
-    public static string
-        language = "en-US", // not really needed (atm, atleast)
-        directoryPath = "/user/data/FPKGi/",
-        downloadPath = $"{directoryPath}Downloads/",
-        background_uri = null;
-
-    public static bool
-        ascending = true,
-        directDownload = true,
-        installAfter = true,
-        deleteAfter = false,
-        deleteOnCancel = false,
-        populateViaWeb = false,
-        backgroundMusic = true,
-        enableUpdates = true;
-
-    public static Dictionary<string, string>
-        ContentURLs = new Dictionary<string, string>
-        {
-            { "ps1", null }, { "ps2", null }, { "psp", null }, { "games", null },
-            { "apps", null }, { "updates", null }, { "dlc", null }, { "demos", null },
-            { "homebrew", null },  { "emulators", null }, { "themes", null },
-    };
-
-    public static int
-        languageID = 1, sortCriteria = 2,
-        contentFilter = (int)ContentType.ALL;
-
-    public static string[]
-        filteredRegions = { "Asia",
-        "Europe", "Japan", "USA" };
-
-    public struct PreviousSettings
-    {
-        public bool ascending;
-        public int sortCriteria;
-        public int contentFilter;
-        public string[] filteredRegions;
-        public string searchFilter;
-        public string background_uri;
-        public Texture previousBg;
-        public bool directDownload;
-        public bool populateViaWeb;
-        public bool installAfter;
-        public bool deleteAfter;
-        public bool deleteOnCancel;
-        public bool enableUpdates;
-        public bool backgroundMusic;
-    }
-
-    public static PreviousSettings
-        pS = new PreviousSettings();
-    #endregion
 
     #region Global Variabales
     public static Color blueish
@@ -89,8 +33,6 @@ public class Variables
 
     public static RawImage
         background, coverImage;
-
-    public static Font selectedFont;
 
     public static Text[] menuTexts;
 
@@ -126,16 +68,80 @@ public class Variables
         sortByOptions = { "Size", "Region",
                        "Name", "Title ID" },
 
-        contentOptions = {  "PS1", "PS2", "PSP",
+        contentOptions =
+        {
+                    "PS1", "PS2", "PSP", "PS5",
                     "Games", "Apps", "Updates",
                     "DLCs", "Demos", "Homebrew",
-                    "Emulators", "Themes", "ALL" };
+                    "Emulators", "Themes", "ALL"
+        };
 
     public static JsonData Content;
 
-    public static string
-        SearchText = "Search Content (By name or title ID)",
-        setDownloadPath = "Set Download Location...";
+    #endregion
 
+    #region User Configuration
+    public static string
+        directoryPath = "/user/data/FPKGi/",
+        downloadPath = $"{directoryPath}Downloads/",
+        background_uri = null;
+
+    public static bool
+        ascending = true,
+        directDownload = true,
+        installAfter = true,
+        deleteAfter = false,
+        deleteOnCancel = false,
+        populateViaWeb = false,
+        backgroundMusic = true,
+        enableUpdates = true;
+
+    public static Dictionary<string, string>
+        ContentURLs = new Dictionary<string, string>
+        {
+            { "ps1", null },
+            { "ps2", null },
+            { "psp", null },
+            { "ps5", null },
+            { "games", null },
+            { "apps", null },
+            { "updates", null },
+            { "dlc", null },
+            { "demos", null },
+            { "homebrew", null },
+            { "emulators", null },
+            { "themes", null },
+    };
+
+    public static int
+        sortCriteria = 2,
+
+        contentFilter =
+        (int)ContentType.ALL;
+
+    public static string[]
+        filteredRegions = { "Asia",
+        "Europe", "Japan", "USA" };
+
+    public struct PreviousSettings
+    {
+        public bool ascending;
+        public int sortCriteria;
+        public int contentFilter;
+        public string[] filteredRegions;
+        public string searchFilter;
+        public string background_uri;
+        public Texture previousBg;
+        public bool directDownload;
+        public bool populateViaWeb;
+        public bool installAfter;
+        public bool deleteAfter;
+        public bool deleteOnCancel;
+        public bool enableUpdates;
+        public bool backgroundMusic;
+    }
+
+    public static PreviousSettings
+        pS = new PreviousSettings();
     #endregion
 }

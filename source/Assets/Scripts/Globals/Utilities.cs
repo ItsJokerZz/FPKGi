@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -16,7 +15,7 @@ using static UOBWrapper;
 using static Variables;
 using Random = System.Random;
 
-public class Utilities
+public class Utilities : MonoBehaviour
 {
     public class UI
     {
@@ -45,13 +44,113 @@ public class Utilities
             return null;
         }
 
-        public static Text FindTextComponent(string path)
+        public static void AdjustSpacingForCentering(Transform container, HorizontalLayoutGroup layoutGroup)
         {
-            GameObject obj = GameObject.Find(path);
-            return obj?.GetComponent<Text>();
+            int childCount = 0;
+            for (int i = 0; i < container.childCount; i++)
+            {
+                var child = container.GetChild(i).gameObject;
+                if (child != null && (child.name.ToLower().Contains("touch")
+                    || child.name.ToLower().Contains("cross")
+                     || child.name.ToLower().Contains("circle")
+                     || child.name.ToLower().Contains("square")
+                     || child.name.ToLower().Contains("triangle")))
+                    childCount++;
+            }
+
+            // Calculate the negative spacing based on the number of items
+            float spacingValue = 0f;
+
+            if (childCount == 1)
+            {
+                spacingValue = -10; // Small negative spacing for 1 item
+            }
+            else if (childCount == 2)
+            {
+                spacingValue = -925; // Slightly larger negative spacing for 2 items
+            }
+            else if (childCount == 3)
+            {
+                spacingValue = -795; // Larger negative spacing for 3 items
+            }
+            else
+            {
+                spacingValue = -450; // Even larger negative spacing for more than 3 items
+            }
+
+            // Apply the negative spacing value directly
+            layoutGroup.spacing = spacingValue;
+
+            // Force layout rebuild to ensure the updated spacing is applied
+            LayoutRebuilder.ForceRebuildLayoutImmediate(container.GetComponent<RectTransform>());
         }
 
-        public static void ShowUIState(GameObject canvas, GameObject controls)
+        public static void ResizePrefab(Transform container, GameObject prefab, string textStr)
+        {
+            if (prefab == null || container == null)
+                return;
+
+            GameObject instance = GameObject.Instantiate(prefab, container);
+            if (instance == null)
+                return;
+
+            Transform imageTransform = instance.transform.Find("Image");
+            Transform textTransform = instance.transform.Find("Text");
+
+            if (imageTransform == null || textTransform == null)
+                return;
+
+            RectTransform imageRect = imageTransform.GetComponent<RectTransform>();
+            RectTransform textRect = textTransform.GetComponent<RectTransform>();
+
+            if (imageRect == null || textRect == null)
+                return;
+
+            Text textComponent = textTransform.GetComponent<Text>();
+            if (textComponent != null)
+            {
+                textComponent.text = textStr;
+                textComponent.cachedTextGenerator.Invalidate();
+                textComponent.cachedTextGeneratorForLayout.Invalidate();
+
+                float preferredWidth = textComponent.preferredWidth;
+                textRect.sizeDelta = new Vector2(preferredWidth, 48);
+            }
+
+            Vector2 imagePosition = imageRect.anchoredPosition;
+            float imageWidth = imageRect.rect.width;
+
+            textRect.anchoredPosition = new Vector2(imagePosition.x + imageWidth, imagePosition.y);
+
+            imageRect.anchorMin = new Vector2(0, 0.5f); // Anchor to the left of the parent container
+            imageRect.anchorMax = new Vector2(0, 0.5f); // Anchor to the left of the parent container
+            imageRect.pivot = new Vector2(0, 0.5f); // Set pivot to the left center
+
+            textRect.anchorMin = new Vector2(0, 0.5f); // Anchor to the left of the parent container
+            textRect.anchorMax = new Vector2(0, 0.5f); // Anchor to the left of the parent container
+            textRect.pivot = new Vector2(0, 0.5f); // Set pivot to the left center
+
+            RectTransform prefabRect = instance.GetComponent<RectTransform>();
+            if (prefabRect != null)
+            {
+                float combinedWidth = imageWidth + textRect.rect.width;
+                prefabRect.sizeDelta = new Vector2(combinedWidth, prefabRect.sizeDelta.y); // Set width to match image + text
+            }
+
+            HorizontalLayoutGroup layoutGroup = container.GetComponent<HorizontalLayoutGroup>();
+            if (layoutGroup != null)
+                AdjustSpacingForCentering(container, layoutGroup);
+        }
+
+        public static void RemoveAllChildren(Transform container)
+        {
+            if (container == null) return;
+
+            for (int i = container.childCount - 1; i >= 0; i--)
+                GameObject.DestroyImmediate(container.GetChild(i).gameObject);
+        }
+
+        public static void ShowUIState(GameObject canvas)
         {
             FindInactiveObjectsByPath("Canvas/Menu")?.SetActive(false);
             FindInactiveObjectsByPath("Canvas/Details")?.SetActive(false);
@@ -60,14 +159,47 @@ public class Utilities
             FindInactiveObjectsByPath("Canvas/Update")?.SetActive(false);
             FindInactiveObjectsByPath("Canvas/Close")?.SetActive(false);
 
-            FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Main")?.SetActive(false);
-            FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Menu")?.SetActive(false);
-            FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Details")?.SetActive(false);
-            FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Download")?.SetActive(false);
-            FindInactiveObjectsByPath("Canvas/Main/Images/Controls/Close")?.SetActive(false);
+            Background bg = FindInactiveObjectsByPath("Scripts")?.GetComponent<Background>();
+            RemoveAllChildren(FindInactiveObjectsByPath("Canvas/Main/Controls")?.GetComponent<Transform>());
+
+            if (canvas == null)
+            {
+                ResizePrefab(bg.controlContainer, bg.touch, "Search");
+                ResizePrefab(bg.controlContainer, bg.cross, "Download");
+                ResizePrefab(bg.controlContainer, bg.square, "Details");
+                ResizePrefab(bg.controlContainer, bg.triangle, "Menu");
+                ResizePrefab(bg.controlContainer, bg.circle, "Exit");
+            }
+            else
+            {
+                switch (canvas.name)
+                {
+                    case "Menu":
+                        ResizePrefab(bg.controlContainer, bg.cross, "Select");
+                        ResizePrefab(bg.controlContainer, bg.circle, "Cancel");
+                        ResizePrefab(bg.controlContainer, bg.triangle, "Close");
+                        break;
+
+                    case "Details":
+                        ResizePrefab(bg.controlContainer, bg.cross, "Download");
+                        ResizePrefab(bg.controlContainer, bg.circle, "Close");
+                        ResizePrefab(bg.controlContainer, bg.triangle, "Menu");
+                        break;
+
+                    case "Download":
+                        ResizePrefab(bg.controlContainer, bg.circle, "Cancel Download");
+                        break;
+
+                    case "Cancel":
+                    case "Update":
+                    case "Close":
+                        ResizePrefab(bg.controlContainer, bg.cross, "Confirm");
+                        ResizePrefab(bg.controlContainer, bg.circle, "Cancel");
+                        break;
+                }
+            }
 
             canvas?.SetActive(true);
-            controls?.SetActive(true);
         }
 
         public static void ChangeText(Text[] texts, int num, string text)
@@ -131,27 +263,73 @@ public class Utilities
         public static string FormatVersion(float? version)
         {
             if (!version.HasValue)
-                return "Invalid Version";
+                return "?.??.?";
 
-            string formattedVersion;
             string versionStr = version.Value.ToString("0.000", CultureInfo.InvariantCulture);
+            string[] parts = versionStr.Split('.');
+            string major = parts[0];
+            string decimalPart = parts[1];
 
-            if (versionStr.EndsWith("0"))
-                formattedVersion = version.Value.ToString("0.00", CultureInfo.InvariantCulture);
-            else
+            if (decimalPart.Length < 3)
+                decimalPart = decimalPart.PadRight(3, '0');
+
+            string minor = decimalPart.Substring(0, 2);
+            string patch = decimalPart.Substring(2, 1);
+
+            return $"{major}.{minor}.{patch}";
+        }
+
+        public static bool IsNonEnglish(string input)
+        {
+            foreach (char c in input)
             {
-                string[] parts = versionStr.Split('.');
-                if (parts.Length > 1 && parts[1].Length > 2)
-                    formattedVersion = $"{parts[0]}.{parts[1].Substring(0, 2)}.{parts[1].Substring(2)}";
-                else
-                    formattedVersion = version.Value.ToString("0.00", CultureInfo.InvariantCulture);
+                if (c > 127)
+                    return true;
             }
 
-            return formattedVersion;
+            return false;
+        }
+
+        public static void SetFontByText(ref Text text)
+        {
+            var contentHandler =
+                FindObjectOfType<ContentHandler>();
+
+            int arabic = 0, asain = 0, korean = 0;
+
+            foreach (char c in text.text)
+            {
+                if ((c >= 0x0600 && c <= 0x06FF) ||
+                    (c >= 0x0750 && c <= 0x077F) ||
+                    (c >= 0x08A0 && c <= 0x08FF))
+                    arabic++;
+
+                // Asain (Simplified & Traditional Chinese, Taiwanese, & Japanse)
+                else if ((c >= 0x4E00 && c <= 0x9FFF) ||
+                    (c >= 0x3400 && c <= 0x4DBF) ||
+                    (c >= 0x3100 && c <= 0x312F) ||
+                    (c >= 0x2F00 && c <= 0x2FDF) ||
+                    (c >= 0x3040 && c <= 0x309F) ||
+                    (c >= 0x30A0 && c <= 0x30FF) ||
+                    (c >= 0x20000 && c <= 0x2A6DF))
+                    asain++;
+
+                else if ((c >= 0xAC00 && c <= 0xD7AF) || 
+                    (c >= 0x1100 && c <= 0x11FF) ||
+                    (c >= 0x3130 && c <= 0x318F))
+                    korean++;
+            }
+
+            if (arabic > 0)
+                text.font = contentHandler.Arabic;
+            else if (asain > 0)
+                text.font = contentHandler.Asian;
+            else if (korean > 0)
+                text.font = contentHandler.Korean;
+            else text.font = contentHandler.Multi;
         }
 
     }
-
 
     public class JSON
     {
@@ -248,6 +426,9 @@ public class Utilities
                         case ContentType.PSP:
                             url = Variables.ContentURLs["psp"];
                             break;
+                        case ContentType.PS5:
+                            url = Variables.ContentURLs["ps5"];
+                            break;
                         case ContentType.Games:
                             url = Variables.ContentURLs["games"];
                             break;
@@ -312,7 +493,7 @@ public class Utilities
                                     {
                                         title_id = "PKGI13337",
                                         region = "ALL",
-                                        name = "F[PKGi]",
+                                        name = "FPKGi",
                                         version = UI.FormatVersion(version),
                                         release = "12-25-2024",
                                         size = pkgSize ?? "82182144",
@@ -354,6 +535,9 @@ public class Utilities
                                 break;
                             case ContentType.PSP:
                                 defaultName = "PSP Remaster";
+                                break;
+                            case ContentType.PS5:
+                                defaultName = "PS5 Dump";
                                 break;
                             case ContentType.Games:
                                 defaultName = "Game";
@@ -496,6 +680,8 @@ public class Utilities
                     return Path.Combine(directoryPath, "ContentJSONs", "PS2.json");
                 case ContentType.PSP:
                     return Path.Combine(directoryPath, "ContentJSONs", "PSP.json");
+                case ContentType.PS5:
+                    return Path.Combine(directoryPath, "ContentJSONs", "PS5.json");
                 case ContentType.Games:
                     return Path.Combine(directoryPath, "ContentJSONs", "GAMES.json");
                 case ContentType.Apps:
@@ -572,6 +758,35 @@ public class Utilities
             || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".bmp", StringComparison.OrdinalIgnoreCase);
 
+        public static bool IsValidZipArchiveFile(string filePath)
+        {
+
+            if (!File.Exists(filePath))
+                return false;
+
+            try
+            {
+                using (var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read))
+                {
+                    if (stream.Length < 4)
+                        return false;
+
+                    byte[] header = new byte[4];
+
+                    stream.Read(header, 0, header.Length);
+
+                    if (header.SequenceEqual(new byte[] { 0x50, 0x4B, 0x03, 0x04 }))
+                        return true;
+                }
+            }
+            catch (IOException)
+            {
+                return false;
+            }
+
+            return false;
+        }
+
         public static void LoadImage(string path, ref RawImage image)
         {
             try
@@ -639,6 +854,15 @@ public class Utilities
 
         public static bool CompareMD5Hashes(string hash1, string hash2)
             => string.Equals(hash1, hash2, StringComparison.OrdinalIgnoreCase);
+
+        public static string SanitizeFilename(string filename)
+        {
+            var sanitized = new string(filename
+                .Where(c => !Path.GetInvalidFileNameChars().Contains(c))
+                .ToArray());
+
+            return sanitized.Length > 255 ? sanitized.Substring(0, 255) : sanitized;
+        }
 
     }
 

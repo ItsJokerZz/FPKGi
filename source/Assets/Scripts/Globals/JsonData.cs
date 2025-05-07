@@ -8,6 +8,7 @@ public enum ContentType
     PS1,
     PS2,
     PSP,
+    PS5,
     Games,
     Apps,
     Updates,
@@ -77,6 +78,7 @@ public enum SortBy
         public string ps1 { get; set; }
         public string ps2 { get; set; }
         public string psp { get; set; }
+        public string ps5 { get; set; }
         public string games { get; set; }
         public string apps { get; set; }
         public string updates { get; set; }
