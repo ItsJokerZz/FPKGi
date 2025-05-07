@@ -1,15 +1,14 @@
 /source/.vs
-/source/etc
-
 /source/Assets/Scripts/.vs
-
-/source/BUILD
 /source/DATA
+/source/etc
 /source/Library
 /source/obj
 /source/Temp
-
-/source/ProjectSettings
 /source/UnityPackageManager
 
 *.meta
+
+ED1633-PKGI13337_00-0000000000000000-A0100-V0100.pkg
+source/BUILD/ED1633-PKGI13337_00-0000000000000000-A0100-V0100/PKGI13337.gp4
+/source/BUILD/ED1633-PKGI13337_00-0000000000000000-A0100-V0100
