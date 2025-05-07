@@ -1,12 +1,9 @@
 # FPKGi - A Server-Based PS4 & PS5 Content Installer
-
 > [!NOTE]
 > FPKGi (Fake PKG Installer) is an open-source homebrew app for installing modified .pkg files on the PS4 and PS5. Inspired by the original PKGi for PSP, Vita, and PS3, it enables you to manage and install content via .json files—from your device, a local network, or the web—and supports package downloads from your private server. Designed for educational and personal use, FPKGi promotes game preservation in the PlayStation homebrew scene by streamlining content browsing, downloading, and installation. For best performance, offload your files to a NAS and run a web server with Node.js or Python, then pass the content URL to your .json files.
 
 > [!IMPORTANT]  
 > Use FPKGi responsibly and in accordance with the laws of your country. This tool is intended solely for legal, educational, and personal use. Do not use FPKGi for piracy or any other illegal activities. Always download FPKGi from our official GitHub repository, via pkg-zone.com, or through the Homebrew Store, and avoid third-party sources. We assume no responsibility to any damage from malicious downloads and/or legal issues.
-
-#### Important Notice: On PS5, an internet connection is currently required for the app to load. This will be resolved with the next **"etaHEN"** release. Until then, please ensure you have an active internet connection at launch.
 
 ## Setup Instructions
 #### Download the Latest Version:
@@ -182,6 +179,15 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
       
     - Under the `Title Voice Recognition Details` section.
        - `pronunciation.xml` and `pronunciation.sig`
+
+### 4. Setup for etaHEN Jailbreak Usage
+1. Navigate to the `BUILD` folder in the root of the project.  
+2. Use a tool like [LMAN's PKG Viewer](https://archive.org/download/ps4-pkgviewer-v1.5-lman/PS4PKGViewer.v1.5-LMAN.zip) to extract the PKG file.  
+3. Go to `BUILD/BIN` and copy the `param.sfo` file.  
+4. Paste and replace it in the extracted PKG at: `PKGI13337/sce_sys/`
+5. Copy the `PKGI13337.gp4` file from `BUILD/BIN`
+6. Paste it into the **root** of the extracted PKG folder.  
+7. Use the [Fake PKG Tools](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87/releases/) to generate a new PKG. 
 
 **For more detailed guidance with images, check out [RetroGamer74's guide](https://github.com/RetroGamer74/HowToBuildWithUnityPS4FakePKG/blob/master/README.md).**
 
