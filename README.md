@@ -162,6 +162,15 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
    - [PS4 Fake PKG Tools 3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87) to replace the build tools within the SDK.
    - Your choice of Visual Studio (Code) with [.NET 4.6 Developer Pack](https://www.dotnet.microsoft.com/en-us/download/dotnet-framework/net46).
 
+### 4. Setup for etaHEN Jailbreak Usage
+1. Navigate to the `BUILD` folder in the root of the project.  
+2. Use a tool like [LMAN's PKG Viewer](https://archive.org/download/ps4-pkgviewer-v1.5-lman/PS4PKGViewer.v1.5-LMAN.zip) to extract the PKG file.  
+3. Go to `BUILD/BIN` and copy the `param.sfo` file.  
+4. Paste and replace it in the extracted PKG at: `PKGI13337/sce_sys/`
+5. Copy the `PKGI13337.gp4` file from `BUILD/BIN`
+6. Paste it into the **root** of the extracted PKG folder.  
+7. Use the [Fake PKG Tools](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87/releases/) to generate a new PKG. 
+
 **For more detailed guidance with images, check out [RetroGamer74's guide](https://github.com/RetroGamer74/HowToBuildWithUnityPS4FakePKG/blob/master/README.md).**
 
 ## Troubleshooting Error Code `CE-36441-8`
