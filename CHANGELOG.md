@@ -1,6 +1,21 @@
 # FPKGi - Nightly Changelog
 
 <details>
+<summary>[ v1.01.0-release Build: 79 ] from Sept 11th, 2025</summary>
+
+### Improvements & Optimizations
+- Changed the write speed to bits per second for consistency.
+- Made log PS4/5 and its firmware for future debugging.
+- Updated logging and their types for better information.
+- App now adds missing `config.json` values on save/load.
+
+### Fixes, Resolutions & More
+- Updated all URLs pointing to my old site to GitHub Gists.
+- Made sure to remove whitespace & encode all used URLs.
+- Added etaHEN whitelist jailbreak method to fix spam issue.
+<br></details>
+
+<details>
 <summary>[ v1.00.0-release Build: 23 ] from May 7th, 2025</summary>
  
 ### Additions
