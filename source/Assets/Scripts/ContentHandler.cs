@@ -102,7 +102,6 @@ public class ContentHandler : MonoBehaviour
 
         public static List<KeyValuePair<string, GameContent>> ApplyFilter(List<KeyValuePair<string, GameContent>> itemsList)
         {
-            // Filter out PS5 content based on conditions
             if (GoldHEN == true)
             {
                 itemsList = itemsList.Where(item =>

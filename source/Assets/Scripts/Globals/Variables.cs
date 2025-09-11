@@ -1,11 +1,11 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
 public class Variables
 {
-    public static float version = 1.000f;
-    public static int buildNumber = 0023;
+    public static float version = 1.010f;
+    public static int buildNumber = 0079;
 
     public static bool canary = false;
     public static bool nightly = false;
@@ -17,9 +17,21 @@ public class Variables
     public static bool? updateAvailable = null;
     public static float? latestVersion = null;
 
-    public static bool isConsole =
-        Application.platform !=
-        RuntimePlatform.WindowsEditor;
+    public static string updateVersionUrl =
+        "https://gist.githubusercontent.com/ItsJokerZz/05061df82bb31d500e7d0f89bfa0a221/raw/FPKGi_latest.version";
+
+    public static string updateReleaseUrl =
+        "https://gist.githubusercontent.com/ItsJokerZz/f1d4236d04bbbe0fbf47f1e12b5ab611/raw/FPKGi_latest.release";
+
+    public static string updateSizeUrl =
+        "https://gist.githubusercontent.com/ItsJokerZz/6e979e91d020bb574c66e74793b4201f/raw/FPKGi_latest.size";
+
+    public static string updateHashUrl = "https://raw.githubusercontent.com/ItsJokerZz/FPKGi/release/HASH.md5";
+
+    public static string updateDownloadUrl => GoldHEN == true
+    ? "https://pkg-zone.com/download/ps4/PKGI13337/latest" : "https://pkg-zone.com/download/ps5/PKGI13337/latest";
+
+    public static bool isConsole = Application.platform != RuntimePlatform.WindowsEditor;
 
     #region Global Variabales
     public static Color blueish
@@ -82,7 +94,7 @@ public class Variables
 
     #region User Configuration
     public static string
-        directoryPath = "/user/data/FPKGi/",
+        directoryPath = "/data/FPKGi/",
         downloadPath = $"{directoryPath}Downloads/",
         background_uri = null;
 

@@ -58,30 +58,19 @@ public class Utilities : MonoBehaviour
                     childCount++;
             }
 
-            // Calculate the negative spacing based on the number of items
             float spacingValue = 0f;
 
             if (childCount == 1)
-            {
-                spacingValue = -10; // Small negative spacing for 1 item
-            }
+                spacingValue = -10;
             else if (childCount == 2)
-            {
-                spacingValue = -925; // Slightly larger negative spacing for 2 items
-            }
+                spacingValue = -925;
             else if (childCount == 3)
-            {
-                spacingValue = -795; // Larger negative spacing for 3 items
-            }
+                spacingValue = -795;
             else
-            {
-                spacingValue = -450; // Even larger negative spacing for more than 3 items
-            }
+                spacingValue = -450;
 
-            // Apply the negative spacing value directly
             layoutGroup.spacing = spacingValue;
 
-            // Force layout rebuild to ensure the updated spacing is applied
             LayoutRebuilder.ForceRebuildLayoutImmediate(container.GetComponent<RectTransform>());
         }
 
@@ -122,19 +111,19 @@ public class Utilities : MonoBehaviour
 
             textRect.anchoredPosition = new Vector2(imagePosition.x + imageWidth, imagePosition.y);
 
-            imageRect.anchorMin = new Vector2(0, 0.5f); // Anchor to the left of the parent container
-            imageRect.anchorMax = new Vector2(0, 0.5f); // Anchor to the left of the parent container
-            imageRect.pivot = new Vector2(0, 0.5f); // Set pivot to the left center
+            imageRect.anchorMin = new Vector2(0, 0.5f);
+            imageRect.anchorMax = new Vector2(0, 0.5f);
+            imageRect.pivot = new Vector2(0, 0.5f);
 
-            textRect.anchorMin = new Vector2(0, 0.5f); // Anchor to the left of the parent container
-            textRect.anchorMax = new Vector2(0, 0.5f); // Anchor to the left of the parent container
-            textRect.pivot = new Vector2(0, 0.5f); // Set pivot to the left center
+            textRect.anchorMin = new Vector2(0, 0.5f);
+            textRect.anchorMax = new Vector2(0, 0.5f);
+            textRect.pivot = new Vector2(0, 0.5f);
 
             RectTransform prefabRect = instance.GetComponent<RectTransform>();
             if (prefabRect != null)
             {
                 float combinedWidth = imageWidth + textRect.rect.width;
-                prefabRect.sizeDelta = new Vector2(combinedWidth, prefabRect.sizeDelta.y); // Set width to match image + text
+                prefabRect.sizeDelta = new Vector2(combinedWidth, prefabRect.sizeDelta.y);
             }
 
             HorizontalLayoutGroup layoutGroup = container.GetComponent<HorizontalLayoutGroup>();
@@ -222,7 +211,7 @@ public class Utilities : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Print(true, PrintType.Error, $"Failed to parse a chunk of JSON content: {ex.Message}");
+                Print(LogType.Error, $"Failed to parse a chunk of JSON content: {ex.Message}");
                 return false;
             }
 
@@ -295,7 +284,7 @@ public class Utilities : MonoBehaviour
             var contentHandler =
                 FindObjectOfType<ContentHandler>();
 
-            int arabic = 0, asain = 0, korean = 0;
+            int arabic = 0, asian = 0, korean = 0;
 
             foreach (char c in text.text)
             {
@@ -304,7 +293,7 @@ public class Utilities : MonoBehaviour
                     (c >= 0x08A0 && c <= 0x08FF))
                     arabic++;
 
-                // Asain (Simplified & Traditional Chinese, Taiwanese, & Japanse)
+                // Asian (Simplified & Traditional Chinese, Taiwanese, & Japanese)
                 else if ((c >= 0x4E00 && c <= 0x9FFF) ||
                     (c >= 0x3400 && c <= 0x4DBF) ||
                     (c >= 0x3100 && c <= 0x312F) ||
@@ -312,9 +301,9 @@ public class Utilities : MonoBehaviour
                     (c >= 0x3040 && c <= 0x309F) ||
                     (c >= 0x30A0 && c <= 0x30FF) ||
                     (c >= 0x20000 && c <= 0x2A6DF))
-                    asain++;
+                    asian++;
 
-                else if ((c >= 0xAC00 && c <= 0xD7AF) || 
+                else if ((c >= 0xAC00 && c <= 0xD7AF) ||
                     (c >= 0x1100 && c <= 0x11FF) ||
                     (c >= 0x3130 && c <= 0x318F))
                     korean++;
@@ -322,7 +311,7 @@ public class Utilities : MonoBehaviour
 
             if (arabic > 0)
                 text.font = contentHandler.Arabic;
-            else if (asain > 0)
+            else if (asian > 0)
                 text.font = contentHandler.Asian;
             else if (korean > 0)
                 text.font = contentHandler.Korean;
@@ -397,7 +386,7 @@ public class Utilities : MonoBehaviour
                         }
                         catch (Exception ex)
                         {
-                            Print("Error loading " + type.ToString() + ": " + ex.Message, PrintType.Error);
+                            Print(LogType.Exception, "Error loading " + type.ToString() + ": " + ex.Message);
                         }
                     }
                     else
@@ -457,21 +446,22 @@ public class Utilities : MonoBehaviour
                             break;
                     }
 
+                    url = URL.ProperFormatUrl(url);
                     if (URL.IsValidURI(url))
                     {
-                        Print(true, PrintType.Warning, "Attempting to download JSON from: " + url);
+                        Print(LogType.Warning, "Attempting to download JSON from: " + url);
                         webContent = await DownloadAsBytes(url);
 
                         if (string.IsNullOrEmpty(webContent))
                         {
-                            Print(true, PrintType.Error, "Web-based loading failed: no data available for parsing.");
+                            Print(LogType.Error, "Web-based loading failed: no data available for parsing.");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Print(true, PrintType.Error, "Web-based loading failed: " + ex.Message);
-                    Print(true, PrintType.Warning, "Falling back to local file loading.");
+                    Print(LogType.Error, "Web-based loading failed: " + ex.Message);
+                    Print(LogType.Warning, "Falling back to local file loading.");
                 }
             }
 
@@ -481,8 +471,8 @@ public class Utilities : MonoBehaviour
                 {
                     if (contentType == ContentType.Homebrew)
                     {
-                        string pkgUrl = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/?echo=1");
-                        string pkgSize = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/");
+                        string pkgUrl = await DownloadAsBytes(updateDownloadUrl);
+                        string pkgSize = await DownloadAsBytes(updateSizeUrl);
 
                         var homebrewJson = new
                         {
@@ -610,7 +600,7 @@ public class Utilities : MonoBehaviour
                 }
                 catch (Exception ex)
                 {
-                    Print("Failed to generate default JSON: " + ex.Message, PrintType.Error);
+                    Print(LogType.Exception, "Failed to generate default JSON: " + ex.Message);
                     return 0;
                 }
             }
@@ -829,7 +819,7 @@ public class Utilities : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Print(true, PrintType.Error, $"Failed to load image: {ex.Message}");
+                Print(LogType.Error, $"Failed to load image: {ex.Message}");
             }
         }
 
@@ -868,22 +858,12 @@ public class Utilities : MonoBehaviour
 
     public class URL
     {
-        public static string DecryptBase64(string encodedString)
-        {
-            if (IsValidURI(encodedString)) return encodedString;
-
-            byte[] decodedBytes = Convert.FromBase64String(encodedString);
-            string decodedString = Encoding.UTF8.GetString(decodedBytes);
-
-            return decodedString;
-        }
-
         public static bool IsValidURI(string url)
         {
             if (IO.DoesPathExist(url)) return true;
             if (string.IsNullOrWhiteSpace(url) || string.IsNullOrEmpty(url)) return false;
 
-            url = Uri.EscapeUriString(url.Trim());
+            url = URL.ProperFormatUrl(url);
 
             Uri uri;
             if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
@@ -896,11 +876,70 @@ public class Utilities : MonoBehaviour
             return true;
         }
 
+        public static string DecryptBase64(string encodedString)
+        {
+            if (IsValidURI(encodedString)) return encodedString;
+
+            byte[] decodedBytes = Convert.FromBase64String(encodedString);
+            string decodedString = Encoding.UTF8.GetString(decodedBytes);
+
+            return decodedString;
+        }
+
+        public static string ProperFormatUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return string.Empty;
+
+            url = url.Trim();
+
+            string scheme = string.Empty;
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase))
+            {
+                scheme = "http://";
+                url = url.Substring(7);
+            }
+            else if (url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                scheme = "https://";
+                url = url.Substring(8);
+            }
+
+            var sb = new StringBuilder();
+
+            for (int i = 0; i < url.Length; i++)
+            {
+                char c = url[i];
+
+                if (c == '%' && i + 2 < url.Length && Uri.IsHexDigit(url[i + 1]) && Uri.IsHexDigit(url[i + 2]))
+                {
+                    sb.Append(url.Substring(i, 3));
+                    i += 2;
+                    continue;
+                }
+
+                if (char.IsLetterOrDigit(c) || c == '-' || c == '_' || c == '.' || c == '~' ||
+                    c == '/' || c == ':' || c == '?' || c == '#' || c == '@' || c == '!' ||
+                    c == '$' || c == '&' || c == '\'' || c == '*' || c == '+' || c == ',' ||
+                    c == ';' || c == '=')
+                    sb.Append(c);
+                else if (c == ' ')
+                    sb.Append("%20");
+                else
+                {
+                    foreach (var b in Encoding.UTF8.GetBytes(new[] { c }))
+                        sb.Append('%').Append(b.ToString("X2"));
+                }
+            }
+
+            return scheme + sb.ToString();
+        }
+
         public static bool IsValidImageType(string url)
             => IO.IsValidImageExtension(Path.GetExtension(url));
 
         public static bool IsValidImage(string url)
-            => !string.IsNullOrEmpty(url) && IsValidURI(url) && IsValidImageType(url);
+            => !string.IsNullOrEmpty(url) && IsValidURI(ProperFormatUrl(url)) && IsValidImageType(url);
 
     }
 

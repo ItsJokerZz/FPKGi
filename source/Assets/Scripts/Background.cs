@@ -1,8 +1,10 @@
 ﻿using Newtonsoft.Json;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -182,147 +184,113 @@ public class Background : MonoBehaviour
     public static void HandleConfiguration()
     {
         string configPath = Path.Combine(directoryPath, "config.json");
+
         if (!File.Exists(configPath))
         {
-            Print(true, PrintType.Warning, "CONFIG DOESN'T EXIST! CREATING...");
+            Print(LogType.Assert, "CONFIG DOESN'T EXIST! CREATING...");
             SaveConfiguration();
             return;
         }
 
-        #region Resolves issues present in version v0.81 and prior
+        #region Resolves issues present in version v0.81 and prior.
         string homebrewPath = IO.GetFilePath(ContentType.Homebrew);
         if (File.Exists(homebrewPath))
         {
             string homebrewJson = File.ReadAllText(homebrewPath);
             var content = JsonConvert.DeserializeObject<Games>(homebrewJson);
-            var fpkgiEntry = content.DATA.FirstOrDefault(entry => entry.Value.title_id == "FPKGI13337");
-            if (fpkgiEntry.Value != null)
+            if (content != null && content.DATA != null)
             {
-                var oldKey = fpkgiEntry.Key;
-                var gameContent = fpkgiEntry.Value;
-                gameContent.title_id = "PKGI13337";
+                var fpkgiEntry = content.DATA.FirstOrDefault(entry => entry.Value.title_id == "FPKGI13337");
+                if (fpkgiEntry.Value != null)
+                {
+                    string oldKey = fpkgiEntry.Key;
+                    var gameContent = fpkgiEntry.Value;
+                    gameContent.title_id = "PKGI13337";
 
-                content.DATA.Remove(oldKey);
-                content.DATA[oldKey] = gameContent;
+                    content.DATA.Remove(oldKey);
+                    content.DATA[oldKey] = gameContent;
 
-                string updatedJson = JsonConvert.SerializeObject(content, Formatting.Indented);
-                File.WriteAllText(homebrewPath, updatedJson);
+                    string updatedJson = JsonConvert.SerializeObject(content, Formatting.Indented);
+                    File.WriteAllText(homebrewPath, updatedJson);
+                }
             }
         }
         #endregion
 
         string jsonContent = File.ReadAllText(configPath);
         var config = JsonConvert.DeserializeObject<Config>(jsonContent);
+        if (config == null)
+            config = new Config();
+
+        if (config.filtering == null)
+            config.filtering = new ContentFilter();
+        if (config.filtering.sort == null)
+            config.filtering.sort = new Sort();
+        if (config.filtering.regions == null)
+            config.filtering.regions = new List<string>();
+
+        string contentFilterStr = "all";
+        if (!string.IsNullOrEmpty(config.filtering.content))
+            contentFilterStr = config.filtering.content.ToLower();
+
+        if (contentFilterStr == "ps1") contentFilter = (int)ContentType.PS1;
+        else if (contentFilterStr == "ps2") contentFilter = (int)ContentType.PS2;
+        else if (contentFilterStr == "psp") contentFilter = (int)ContentType.PSP;
+        else if (contentFilterStr == "ps5") contentFilter = (int)ContentType.PS5;
+        else if (contentFilterStr == "games") contentFilter = (int)ContentType.Games;
+        else if (contentFilterStr == "apps") contentFilter = (int)ContentType.Apps;
+        else if (contentFilterStr == "updates") contentFilter = (int)ContentType.Updates;
+        else if (contentFilterStr == "dlc") contentFilter = (int)ContentType.DLC;
+        else if (contentFilterStr == "demos") contentFilter = (int)ContentType.Demos;
+        else if (contentFilterStr == "homebrew") contentFilter = (int)ContentType.Homebrew;
+        else if (contentFilterStr == "emulators") contentFilter = (int)ContentType.Emulators;
+        else if (contentFilterStr == "themes") contentFilter = (int)ContentType.Themes;
+        else contentFilter = (int)ContentType.ALL;
 
         if (config.preferences == null)
-        {
-            Print(true, PrintType.Error, "Config preferences are null.");
-            return;
-        }
-
+            config.preferences = new Preferences();
         if (config.preferences.content_urls == null)
-        {
-            Print(true, PrintType.Error, "Content URLs in preferences are null.");
-            return;
-        }
+            config.preferences.content_urls = new ContentURLs();
 
         foreach (var key in Variables.ContentURLs.Keys.ToList())
         {
-            var configValue = config.preferences.content_urls.GetType()
-                .GetProperty(key, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)?
-                .GetValue(config.preferences.content_urls) as string;
+            var prop = config.preferences.content_urls.GetType()
+                .GetProperty(key, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance);
+            string value = prop != null ? prop.GetValue(config.preferences.content_urls) as string : null;
 
-            if (!string.IsNullOrEmpty(configValue))
-                Variables.ContentURLs[key] = URL.DecryptBase64(configValue);
-        }
-
-        if (config.filtering == null)
-        {
-            Print(true, PrintType.Error, "Filtering in config is null.");
-            return;
-        }
-
-        string contentFilterStr = config.filtering.content?.ToLower();
-        if (!string.IsNullOrEmpty(contentFilterStr))
-        {
-            switch (contentFilterStr)
+            if (!string.IsNullOrEmpty(value))
             {
-                case "ps1":
-                    contentFilter = (int)ContentType.PS1;
-                    break;
-                case "ps2":
-                    contentFilter = (int)ContentType.PS2;
-                    break;
-                case "psp":
-                    contentFilter = (int)ContentType.PSP;
-                    break;
-                case "ps5":
-                    contentFilter = (int)ContentType.PS5;
-                    break;
-                case "games":
-                    contentFilter = (int)ContentType.Games;
-                    break;
-                case "apps":
-                    contentFilter = (int)ContentType.Apps;
-                    break;
-                case "updates":
-                    contentFilter = (int)ContentType.Updates;
-                    break;
-                case "dlc":
-                    contentFilter = (int)ContentType.DLC;
-                    break;
-                case "demos":
-                    contentFilter = (int)ContentType.Demos;
-                    break;
-                case "homebrew":
-                    contentFilter = (int)ContentType.Homebrew;
-                    break;
-                case "emulators":
-                    contentFilter = (int)ContentType.Emulators;
-                    break;
-                case "themes":
-                    contentFilter = (int)ContentType.Themes;
-                    break;
-                case "all":
-                    contentFilter = (int)ContentType.ALL;
-                    break;
+                string formatted = URL.ProperFormatUrl(URL.DecryptBase64(value));
+                Variables.ContentURLs[key] = URL.IsValidURI(formatted) ? formatted : null;
             }
+            else if (Variables.ContentURLs[key] == null)
+                Variables.ContentURLs[key] = null;
         }
 
-        string sortType = config.filtering.sort?.type?.ToLower();
-        if (!string.IsNullOrEmpty(sortType))
-        {
-            switch (sortType)
-            {
-                case "size":
-                    sortCriteria = 0;
-                    break;
-                case "region":
-                    sortCriteria = 1;
-                    break;
-                case "name":
-                    sortCriteria = 2;
-                    break;
-                case "titleid":
-                    sortCriteria = 3;
-                    break;
-            }
-        }
+        string sortType = "size";
+        if (config.filtering.sort != null && !string.IsNullOrEmpty(config.filtering.sort.type))
+            sortType = config.filtering.sort.type.ToLower();
 
-        ascending = config.filtering.sort?.ascending ?? ascending;
-        filteredRegions = config.filtering.regions?.Distinct().ToArray() ?? filteredRegions;
+        if (sortType == "size") sortCriteria = 0;
+        else if (sortType == "region") sortCriteria = 1;
+        else if (sortType == "name") sortCriteria = 2;
+        else if (sortType == "titleid") sortCriteria = 3;
+        else sortCriteria = 0;
 
-        directDownload = config.preferences.downloads?.directDownload ?? true;
-        downloadPath = config.preferences.downloads?.downloadPath ?? "/user/data/FPKGi/Downloads";
-        installAfter = config.preferences.downloads?.installAfter ?? true;
-        deleteAfter = config.preferences.downloads?.deleteAfter ?? true;
-        deleteOnCancel = config.preferences.downloads?.deleteOnCancel ?? false;
+        ascending = (config.filtering.sort != null) ? config.filtering.sort.ascending : true;
+        filteredRegions = (config.filtering.regions != null) ? config.filtering.regions.Distinct().ToArray() : new string[0];
 
-        background_uri = config.preferences.application?.background_uri ?? null;
-        backgroundMusic = config.preferences.application?.backgroundMusic ?? true;
-        enableUpdates = config.preferences.application?.enableUpdates ?? true;
-        populateViaWeb = loadedOffline == false &&
-            config?.preferences?.application?.populateViaWeb == true;
+        directDownload = (config.preferences.downloads != null) ? config.preferences.downloads.directDownload : true;
+        downloadPath = (config.preferences.downloads != null && !string.IsNullOrEmpty(config.preferences.downloads.downloadPath)) ?
+                       config.preferences.downloads.downloadPath : "/data/FPKGi/Downloads";
+        installAfter = (config.preferences.downloads != null) ? config.preferences.downloads.installAfter : true;
+        deleteAfter = (config.preferences.downloads != null) ? config.preferences.downloads.deleteAfter : true;
+        deleteOnCancel = (config.preferences.downloads != null) ? config.preferences.downloads.deleteOnCancel : false;
+
+        background_uri = (config.preferences.application != null) ? config.preferences.application.background_uri : null;
+        backgroundMusic = (config.preferences.application != null) ? config.preferences.application.backgroundMusic : true;
+        enableUpdates = (config.preferences.application != null) ? config.preferences.application.enableUpdates : true;
+        populateViaWeb = loadedOffline == false && (config.preferences.application != null && config.preferences.application.populateViaWeb);
 
         FindObjectOfType<Background>()?.LoadCustomBackground();
 
@@ -334,7 +302,11 @@ public class Background : MonoBehaviour
         if (!File.Exists(background_uri))
         {
             if (URL.IsValidImage(background_uri))
-                SetImageFromURL(background_uri, ref background);
+            {
+                var bg = URL.ProperFormatUrl(background_uri);
+                if (URL.IsValidURI(bg))
+                    SetImageFromURL(bg, ref background);
+            }
         }
         else IO.LoadImage(background_uri, ref background);
     }
@@ -437,7 +409,7 @@ public class Background : MonoBehaviour
         float? temperature = null;
         string freeSpace = string.Empty;
 
-        Print(true, PrintType.Default, "Displaying content and system information...");
+        Print(LogType.Assert, "Displaying content and system information...");
 
         UI.FindInactiveObjectsByPath("Canvas/Main/ContentSort")?.SetActive(true);
         UI.FindInactiveObjectsByPath("Canvas/Main/PkgCount")?.SetActive(true);
@@ -492,18 +464,20 @@ public class Background : MonoBehaviour
 
     public static async Task<bool> CheckForAppUpdates()
     {
+        if (nightly || canary)
+            return true;
+
         string latestHash = string.Empty, currentHash = string.Empty;
 
         if (loadedOffline == false)
         {
-            Print(true, PrintType.Default, "Checking for app updates...");
+            Print(LogType.Assert, "Checking for app updates...");
 
             if (!updateChecked)
             {
-                Print(true, PrintType.Default, "Fetching latest MD5 hash to compare...");
+                Print(LogType.Assert, "Fetching latest MD5 hash to compare...");
 
-                latestHash =
-                    await DownloadAsBytes("https://raw.githubusercontent.com/ItsJokerZz/FPKGi/nightly/HASH.md5");
+                latestHash = await DownloadAsBytes(updateHashUrl);
 
                 string path;
                 if (isConsole)
@@ -514,14 +488,11 @@ public class Background : MonoBehaviour
                 if (updateAvailable == null)
                     updateAvailable = canary == false && !IO.CompareMD5Hashes(currentHash, latestHash);
 
-                Print(true, PrintType.Default, $"Latest MD5: {latestHash}");
-                Print(true, PrintType.Default, $"Current MD5: {currentHash}");
-
                 if (latestVersion == null)
                 {
-                    Print(true, PrintType.Default, "Checking for the latest version available...");
+                    Print(LogType.Assert, "Checking for the latest version available...");
 
-                    string result = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/latestVersion/");
+                    string result = await DownloadAsBytes(updateVersionUrl);
 
                     if (result.Contains("No valid version found in any release."))
                         latestVersion = version;
@@ -532,8 +503,11 @@ public class Background : MonoBehaviour
                             System.Globalization.CultureInfo.InvariantCulture, out found))
                             latestVersion = (float)found;
 
-                        Print(true, PrintType.Default, $"Latest Version: {UI.FormatVersion(latestVersion)}");
-                        Print(true, PrintType.Default, $"Current Version: {UI.FormatVersion(version)}");
+                        Print(LogType.Log, $"Current MD5: {currentHash}");
+                        Print(LogType.Log, $"Latest MD5: {latestHash}");
+                        Print(LogType.Log, $"Latest Version: {UI.FormatVersion(latestVersion)}");
+                        Print(LogType.Log, $"Current Version: {UI.FormatVersion(version)}");
+                        Print(LogType.Log, $"Build Number: {buildNumber}");
                     }
                 }
 
@@ -543,7 +517,7 @@ public class Background : MonoBehaviour
 
             if (version < latestVersion && updateAvailable == true)
             {
-                Print(true, PrintType.Warning, $"MD5 hash and version mismatch, update required!");
+                Print(LogType.Warning, $"MD5 hash and version mismatch, update required!");
 
                 UI.ShowUIState(UI.FindInactiveObjectsByPath("Canvas/Update"));
                 Text currentVersionText = UI.FindInactiveObjectsByPath("Canvas/Update/Text/Versions/Current")?.GetComponent<Text>();
@@ -556,7 +530,7 @@ public class Background : MonoBehaviour
                 currentMD5Text.text = $"MD5: {currentHash}";
                 latestMD5Text.text = $"MD5: {latestHash}";
 
-                string latestSize = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/");
+                string latestSize = await DownloadAsBytes(updateSizeUrl);
                 latestSizeText.text = $"Size: {IO.FormatByteString(latestSize)}";
             }
         }
@@ -573,15 +547,19 @@ public class Background : MonoBehaviour
             UOB.BreakFromSandbox();
 
             float startTime = Time.time;
-            string henFolder = GoldHEN == true ? "/user/data/GoldHEN/" : "/user/data/etaHEN/";
+            string henFolder = GoldHEN == true ? "/data/GoldHEN/" : "/data/etaHEN/";
+
+            if (IO.DoesPathExist("/data/UnityOrbisBridge.log"))
+                File.Delete("/data/UnityOrbisBridge.log");
+
+            string consoleType = etaHEN == true ? "PS5" : "PS4";
+            string fwVersion = Marshal.PtrToStringAnsi(UOB.GetFWVersion());
+            Print(LogType.Assert, $"Running on {consoleType} ({fwVersion})");
 
             while (!IO.DoesPathExist(henFolder))
                 yield return null;
 
-            Print(true, PrintType.Default, $"Successfully broke from sandbox in {Time.time - startTime} seconds!");
-
-            if (IO.DoesPathExist("/user/data/UnityOrbisBridge.log"))
-                File.Delete("/user/data/UnityOrbisBridge.log");
+            Print(LogType.Assert, $"Successfully broke from sandbox in {Time.time - startTime} seconds!");
 
             UOB.InitializeNativeDialogs();
         }
@@ -610,7 +588,7 @@ public class Background : MonoBehaviour
             if (GoldHEN == true)
                 UOB.TextNotify(222, "Please connect to the internet and/or use local connection content!");
 
-            Print(true, PrintType.Warning, "Loaded offline, toggling \"Populate Via Web\" to prevent hanging...");
+            Print(LogType.Warning, "Loaded offline, toggling \"Populate Via Web\" to prevent hanging...");
         }
         else
             loadedOffline = false;

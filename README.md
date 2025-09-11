@@ -150,44 +150,17 @@ Add images via URL or locally (supports `.png`, `.bmp`, `.jpg`, and `.jpeg`).
       <li><a href="https://www.github.com/SaladLab/Json.Net.Unity3D" target="_blank">Json.Net.Unity3D</a></li>
       <li><a href="https://www.github.com/ItsJokerZz/store-api" target="_blank">HB Store's API</a></li>
       <li><a href="https://www.github.com/ItsJokerZz/UnityOrbisBridge" target="_blank">UnityOrbisBridge</a></li>
-      <li><a href="https://www.github.com/ItsJokerZz/UOBWrapper" target="_blank">UOBWrapper</a></li>
+      <li><a href="https://www.github.com/ItsJokerZz/UnityOrbisBridge/tree/main/source/wrapper" target="_blank">UOBWrapper</a></li>
     </ul>
   </details>
 </details>
 
-### Steps to Build
+### Build Prerequisites
 1. **Ensure Prerequisites are Set Up:**
-   - Install **Unity Hub** and **Unity 2017.2.0p1** (or a compatible version).
-   - Set up the **PS4 SDK 4.50+** with the matching Unity integration.
-   - Download and move the [PS4 Fake PKG Tools 3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87) to the SDK.
-   - Download and install the [.NET 4.6 Developer Pack](https://www.dotnet.microsoft.com/en-us/download/dotnet-framework/net46).
-
-2. **Open the Project:**
-   - Launch **Unity Hub**, add your project, and open it.
-
-3. **Configure Build Settings:**
-   - In Unity, go to `File -> Build Settings`.
-   - Click the `Player Settings` button.
-   - Expand the `Other Settings` section.
-     - Find `PS4 SDK Override` and set the correct SDK path.
-
-     **Note:** Necessary files are provided in the root of the source!
-
-   - Expand the `Publishing Settings` section.
-     - Set the paths for the following:
-       - `Share File Param` under the `Package` section.
-      
-    - Under the `Title Voice Recognition Details` section.
-       - `pronunciation.xml` and `pronunciation.sig`
-
-### 4. Setup for etaHEN Jailbreak Usage
-1. Navigate to the `BUILD` folder in the root of the project.  
-2. Use a tool like [LMAN's PKG Viewer](https://archive.org/download/ps4-pkgviewer-v1.5-lman/PS4PKGViewer.v1.5-LMAN.zip) to extract the PKG file.  
-3. Go to `BUILD/BIN` and copy the `param.sfo` file.  
-4. Paste and replace it in the extracted PKG at: `PKGI13337/sce_sys/`
-5. Copy the `PKGI13337.gp4` file from `BUILD/BIN`
-6. Paste it into the **root** of the extracted PKG folder.  
-7. Use the [Fake PKG Tools](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87/releases/) to generate a new PKG. 
+   - Install **Unity Hub** and **Unity 2017.2.0p1**.
+   - Set up the **PS4 SDK 4.50** with the matching Unity integration.
+   - [PS4 Fake PKG Tools 3.87](https://github.com/CyB1K/PS4-Fake-PKG-Tools-3.87) to replace the build tools within the SDK.
+   - Your choice of Visual Studio (Code) with [.NET 4.6 Developer Pack](https://www.dotnet.microsoft.com/en-us/download/dotnet-framework/net46).
 
 **For more detailed guidance with images, check out [RetroGamer74's guide](https://github.com/RetroGamer74/HowToBuildWithUnityPS4FakePKG/blob/master/README.md).**
 
@@ -196,7 +169,7 @@ If you encounter this error, follow these steps to resolve it:
 
 > [!WARNING]  
 > **THIS IS NOT A FIX OR RECOMMENDED BUT THIS CAN HELP AS A TEMPORARILY <br>
-> WORKAROUND UNTIL REAOLVED. PLEASE BE ADVISED AND REVERT THIS AFTER!**
+> WORKAROUND UNTIL RESOLVED. PLEASE BE ADVISED AND REVERT THIS AFTER!**
 
 1. **Enable Debug Menu**:  
    - Open the **GoldHEN** menu.  

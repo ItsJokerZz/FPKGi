@@ -227,13 +227,13 @@ public class ControlMenu : MonoBehaviour
                     $"Elapsed: {FormatTime(elapsedDownloadTime)}");
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/WriteSpeed")?.GetComponent<Text>(),
-                    $"Write Speed: {FormatSpeed(smoothedWriteSpeed, false)}");
+                    $"Write Speed: {FormatSpeed(smoothedWriteSpeed)}");
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/Percentage")?.GetComponent<Text>(),
                     $"{progressPercentage}%");
 
                 UI.ChangeText(downloadCanvas.transform.Find("Text/DownloadSpeed")?.GetComponent<Text>(),
-                    $"{FormatSpeed(smoothedNetworkSpeed, true)}" +
+                    $"{FormatSpeed(smoothedNetworkSpeed)}" +
                     $" - {IO.FormatByteString(downloadedBytesValue)}" +
                     $" of {IO.FormatByteString(totalFileSizeValue)}");
 
@@ -293,14 +293,14 @@ public class ControlMenu : MonoBehaviour
                     try
                     {
                         File.Delete(pkgFile);
-                        Print(true, PrintType.Default, "Invalid file header, not installing, and deleting...");
+                        Print(LogType.Warning, "Invalid file header, not installing, and deleting...");
                     }
                     catch { /* do nothing */ }
                 }
 
                 if ((hasDownloadCompleted && !downloadErrorOccurred && isValidPackage) && (isConsole && installAfter))
                 {
-                    Print(true, PrintType.Default, $"Installing package {pkgFile}");
+                    Print(LogType.Log, $"Installing package {pkgFile}");
                     UOB.InstallLocalPackage(pkgFile, currentContentItem.Value.name, deleteAfter);
 
                     if (GoldHEN == true && deleteAfter)
@@ -316,14 +316,14 @@ public class ControlMenu : MonoBehaviour
                 try
                 {
                     File.Delete(downloadedFile + ".pkg");
-                    Print(true, PrintType.Default, "Invalid file header, not installing, and deleting...");
+                    Print(LogType.Warning, "Invalid file header, not installing, and deleting...");
                 }
                 catch { /* do nothing */ }
             }
 
             if (hasDownloadCompleted && !downloadErrorOccurred && (isConsole && installAfter) && isValidPackage)
             {
-                Print(true, PrintType.Default, $"Installing package [{downloadedFile + ".pkg"}] " +
+                Print(LogType.Log, $"Installing package [{downloadedFile + ".pkg"}] " +
                     $"from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
 
                 UOB.InstallLocalPackage(downloadedFile + ".pkg", currentContentItem.Value.name, deleteAfter);
@@ -339,19 +339,14 @@ public class ControlMenu : MonoBehaviour
         return TimeSpan.FromSeconds(totalSeconds).ToString(@"hh\:mm\:ss", CultureInfo.InvariantCulture);
     }
 
-    public string FormatSpeed(float bytesPerSecond, bool displayInBits)
+    public string FormatSpeed(float bytesPerSecond)
     {
         int unitIndex = 0;
         float speed = bytesPerSecond;
         string[] units;
 
-        if (!displayInBits)
-            units = new[] { "B/s", "KB/s", "MB/s", "GB/s" };
-        else
-        {
-            speed *= 8;
-            units = new[] { "b/s", "Kb/s", "Mb/s", "Gb/s" };
-        }
+        speed *= 8;
+        units = new[] { "b/s", "Kb/s", "Mb/s", "Gb/s" };
 
         while (speed >= 1024 && unitIndex < units.Length - 1)
         {
@@ -430,7 +425,7 @@ public class ControlMenu : MonoBehaviour
                     }
                     else
                     {
-                        string url = currentContentItem.Value.cover_url;
+                        string url = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
 
                         if (string.IsNullOrEmpty(url) || url == null)
                             coverImage.gameObject.SetActive(false);
@@ -450,12 +445,12 @@ public class ControlMenu : MonoBehaviour
                                     var pkgiEntry = parsedData[oldKey];
 
                                     currentContentItem.Value.version = latestVersion.HasValue ? UI.FormatVersion(latestVersion.Value) : UI.FormatVersion(Variables.version);
-                                    currentContentItem.Value.release = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/getRelease/") ?? "12-25-2024";
-                                    currentContentItem.Value.size = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/size/") ?? "75000000";
+                                    currentContentItem.Value.release = await DownloadAsBytes(updateReleaseUrl) ?? "12-25-2024";
+                                    currentContentItem.Value.size = await DownloadAsBytes(updateSizeUrl) ?? "75000000";
 
                                     GameContent content = pkgiEntry;
 
-                                    string newKey = await DownloadAsBytes("https://www.itsjokerzz.site/projects/FPKGi/download/?echo=1");
+                                    string newKey = await DownloadAsBytes(updateDownloadUrl);
 
                                     parsedData.Remove(oldKey);
                                     parsedData[newKey] = content;
@@ -618,7 +613,7 @@ public class ControlMenu : MonoBehaviour
                    IO.SanitizeFilename(currentContentItem.Value.name);
 
                 if (UI.IsNonEnglish(sanitizedFilename))
-                    sanitizedFilename = $"content-{contentScroll+1}";
+                    sanitizedFilename = $"content-{contentScroll + 1}";
 
                 string packagePath =
                     $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";
@@ -669,16 +664,22 @@ public class ControlMenu : MonoBehaviour
                             return;
                         }
 
-                        var downloadlink = URL.DecryptBase64(Uri.EscapeUriString(Uri.UnescapeDataString(currentContentItem.Key)));
+                        var downloadlink = URL.ProperFormatUrl(URL.DecryptBase64(currentContentItem.Key));
+                        if (!URL.IsValidURI(downloadlink))
+                        {
+                            Print(LogType.Error, $"Invalid download URL: {downloadlink}");
+                            UI.ShowUIState(null);
+                            return;
+                        }
 
                         if (isConsole)
-                            Print(true, PrintType.Warning, $"Attempting to download PKG from: {downloadlink}"); // move to UOB
+                            Print(LogType.Log, $"Attempting to download PKG from: {downloadlink}"); // move to UOB
 
                         if (directDownload)
                         {
                             if (currentPkg.Downloaded.text == "+")
                             {
-                                Print(true, PrintType.Default, $"Installing package [{packagePath}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
+                                Print(LogType.Log, $"Installing package [{packagePath}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
                                 UOB.InstallLocalPackage(packagePath, currentContentItem.Value.name, deleteAfter);
                             }
                             else
@@ -701,7 +702,11 @@ public class ControlMenu : MonoBehaviour
                         else
                         {
                             if (isConsole)
-                                UOB.InstallWebPackage(downloadlink, sanitizedFilename, currentContentItem.Value.cover_url);
+                            {
+                                var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                                if (!URL.IsValidURI(cover)) cover = "NULL";
+                                UOB.InstallWebPackage(downloadlink, sanitizedFilename, cover);
+                            }
                         }
                     }
                 }
@@ -1090,7 +1095,7 @@ public class ControlMenu : MonoBehaviour
 
                 UpdateSettingsOptions();
 
-                background.gameObject.SetActive(URL.IsValidURI(background_uri) || URL.IsValidImage(background_uri));
+                background.gameObject.SetActive(URL.IsValidURI(URL.ProperFormatUrl(background_uri)) || URL.IsValidImage(background_uri));
 
                 if (!backgroundMusic)
                     audioSource.Stop();

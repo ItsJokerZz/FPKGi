@@ -432,7 +432,7 @@ PlayerSettings:
   ps4MasterVersion: 01.00
   ps4AppVersion: 01.00
   ps4AppType: 0
-  ps4ParamSfxPath: 
+  ps4ParamSfxPath: BUILD/BIN/param.sfx
   ps4VideoOutPixelFormat: 0
   ps4VideoOutInitialWidth: 1920
   ps4VideoOutBaseModeInitialWidth: 1920
@@ -443,7 +443,7 @@ PlayerSettings:
   ps4StartupImagePath: Assets/Images/App/StartUp.png
   ps4SaveDataImagePath: 
   ps4SdkOverride: C:/Program Files (x86)/SCE/ORBIS SDKs/4.500
-  ps4BGMPath: Assets/Audio/PKGi Background Music.at9
+  ps4BGMPath: BUILD/BIN/snd0.at9
   ps4ShareFilePath: BUILD/BIN/shareparam.json
   ps4ShareOverlayImagePath: 
   ps4PrivacyGuardImagePath: 
