@@ -1,6 +1,8 @@
 ﻿using Newtonsoft.Json;
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -187,7 +189,8 @@ public class Background : MonoBehaviour
 
         if (!File.Exists(configPath))
         {
-            Print(LogType.Assert, "CONFIG DOESN'T EXIST! CREATING...");
+            Print(LogType.Log, "Creating JSON file: config.json");
+
             SaveConfiguration();
             return;
         }
@@ -357,13 +360,7 @@ public class Background : MonoBehaviour
 
         Text versionText = UI.FindInactiveObjectsByPath("Canvas/Main/Version")?.GetComponent<Text>();
 
-        string state = nightly ? "nightly" : (canary ? "canary" : "release");
-        string versionDisplay = $"v{UI.FormatVersion(version)}";
-
-        if (state != "release")
-            versionDisplay += $"-b{buildNumber:000} [{state}]";
-
-        UI.ChangeText(versionText, versionDisplay);
+        UI.ChangeText(versionText, $"v{UI.FormatVersion(version)}");
 
         UI.ShowUIState(null);
 
@@ -377,8 +374,8 @@ public class Background : MonoBehaviour
         }
         else
         {
-            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
-            downloadPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\Downloads\\";
+            directoryPath = Path.GetFullPath(Application.dataPath + @"\..\DATA\");
+            downloadPath = Path.GetFullPath(Application.dataPath + @"\..\DATA\Downloads\"); 
 
             QualitySettings.vSyncCount = 0;
             Application.targetFrameRate = 240;
@@ -404,7 +401,7 @@ public class Background : MonoBehaviour
         initializedApp = true;
     }
 
-    private IEnumerator UpdateDisplayInfo()
+    public IEnumerator UpdateDisplayInfo()
     {
         float? temperature = null;
         string freeSpace = string.Empty;
@@ -464,29 +461,29 @@ public class Background : MonoBehaviour
 
     public static async Task<bool> CheckForAppUpdates()
     {
-        if (nightly || canary)
-            return true;
-
-        string latestHash = string.Empty, currentHash = string.Empty;
+        string latestHash = string.Empty, currentHash = string.Empty, fileVersion = string.Empty;
 
         if (loadedOffline == false)
         {
-            Print(LogType.Assert, "Checking for app updates...");
-
             if (!updateChecked)
             {
-                Print(LogType.Assert, "Fetching latest MD5 hash to compare...");
+                Print(LogType.Assert, "Fetching the latest MD5 hash to compare...");
 
                 latestHash = await DownloadAsBytes(updateHashUrl);
+
+                var parts = UI.FormatVersion(version).Split('.');
+                fileVersion = $"V{int.Parse(parts[0]):D2}{int.Parse(parts[1]):D2}";
+
+                Print(fileVersion);
 
                 string path;
                 if (isConsole)
                     path = "/user/app/PKGI13337/app.pkg";
-                else path = "D:\\Projects\\Unity\\PS4\\FPKGi\\BUILD\\ED1633-PKGI13337_00-0000000000000000-A0100-V0100.pkg";
+                else path = $"D:\\Projects\\Unity\\PS4\\FPKGi\\BUILD\\ED1633-PKGI13337_00-0000000000000000-A0100-{fileVersion}.pkg";
 
                 currentHash = IO.ComputeFileMD5(path);
                 if (updateAvailable == null)
-                    updateAvailable = canary == false && !IO.CompareMD5Hashes(currentHash, latestHash);
+                    updateAvailable = !IO.CompareMD5Hashes(currentHash, latestHash);
 
                 if (latestVersion == null)
                 {
@@ -503,11 +500,11 @@ public class Background : MonoBehaviour
                             System.Globalization.CultureInfo.InvariantCulture, out found))
                             latestVersion = (float)found;
 
-                        Print(LogType.Log, $"Current MD5: {currentHash}");
-                        Print(LogType.Log, $"Latest MD5: {latestHash}");
-                        Print(LogType.Log, $"Latest Version: {UI.FormatVersion(latestVersion)}");
-                        Print(LogType.Log, $"Current Version: {UI.FormatVersion(version)}");
-                        Print(LogType.Log, $"Build Number: {buildNumber}");
+                        Print(LogType.Assert, $"Current MD5: {currentHash}");
+                        Print(LogType.Assert, $"Latest MD5: {latestHash}");
+                        Print(LogType.Assert, $"Latest Version: {UI.FormatVersion(latestVersion)}");
+                        Print(LogType.Assert, $"Current Version: {UI.FormatVersion(version)}");
+                        Print(LogType.Assert, $"Build Number: {buildNumber}");
                     }
                 }
 
@@ -574,8 +571,7 @@ public class Background : MonoBehaviour
             while (!task.IsCompleted) yield return null;
         }
 
-        var downloadTask =
-            DownloadAsBytes("https://github.com/ItsJokerZz/FPKGi/");
+        var downloadTask = DownloadAsBytes("https://github.com/ItsJokerZz/FPKGi/");
 
         float downloadStart = Time.time;
 
@@ -592,8 +588,6 @@ public class Background : MonoBehaviour
         }
         else
             loadedOffline = false;
-
-        StartCoroutine(UpdateDisplayInfo());
 
         fullyInitialized = true;
 

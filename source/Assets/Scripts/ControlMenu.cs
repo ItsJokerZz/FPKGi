@@ -75,13 +75,15 @@ public class ControlMenu : MonoBehaviour
         HandleConfiguration();
         UpdateSettingsOptions();
 
-        if (backgroundMusic)
-            audioSource.Play();
+        Background background = FindObjectOfType<Background>();
 
-        Background background =
-            FindObjectOfType<Background>();
+        StartCoroutine(background?.UpdateDisplayInfo());
+        
         background?.InitializePkgContent();
         UIManagement.HighlightCurrentPkg();
+
+        if (backgroundMusic) 
+            audioSource.Play();
 
         if (enableUpdates)
             yield return CheckForAppUpdates();
@@ -613,7 +615,7 @@ public class ControlMenu : MonoBehaviour
                    IO.SanitizeFilename(currentContentItem.Value.name);
 
                 if (UI.IsNonEnglish(sanitizedFilename))
-                    sanitizedFilename = $"content-{contentScroll + 1}";
+                    sanitizedFilename = $"content-{contentOptions[contentFilter]}_{contentScroll + 1}";
 
                 string packagePath =
                     $"{downloadPath}[{currentContentItem.Value.title_id}] {sanitizedFilename}.pkg";

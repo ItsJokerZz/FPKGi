@@ -453,9 +453,7 @@ public class Utilities : MonoBehaviour
                         webContent = await DownloadAsBytes(url);
 
                         if (string.IsNullOrEmpty(webContent))
-                        {
                             Print(LogType.Error, "Web-based loading failed: no data available for parsing.");
-                        }
                     }
                 }
                 catch (Exception ex)
@@ -467,11 +465,12 @@ public class Utilities : MonoBehaviour
 
             if (!IO.DoesPathExist(singleFilePath) && contentType != ContentType.ALL)
             {
+                Print(LogType.Log, $"Creating JSON file: {contentType}.json");
                 try
                 {
                     if (contentType == ContentType.Homebrew)
                     {
-                        string pkgUrl = await DownloadAsBytes(updateDownloadUrl);
+                        string pkgUrl = updateDownloadUrl;
                         string pkgSize = await DownloadAsBytes(updateSizeUrl);
 
                         var homebrewJson = new
@@ -500,18 +499,27 @@ public class Utilities : MonoBehaviour
                     else if (contentType != ContentType.Config)
                     {
                         var random = new Random();
-                        string id = random.Next(0, 10).ToString() + random.Next(0, 10).ToString() +
-                                    random.Next(0, 10).ToString() + random.Next(0, 10).ToString() +
+                        string id = random.Next(0, 10).ToString() +
+                                    random.Next(0, 10).ToString() +
+                                    random.Next(0, 10).ToString() +
+                                    random.Next(0, 10).ToString() +
                                     random.Next(0, 10).ToString();
+
                         var regions = new[] { "USA", "EUR", "ASIA", "JAP", null };
+
                         string region = regions[random.Next(regions.Length)];
-                        string version = random.Next(0, 10).ToString() + "." + random.Next(0, 10).ToString() +
+
+                        string version = random.Next(0, 10).ToString() + "." +
+                                         random.Next(0, 10).ToString() +
                                          random.Next(0, 10).ToString();
+
                         DateTime startDate = new DateTime(2000, 1, 1);
                         DateTime endDate = new DateTime(2050, 12, 31);
                         int range = (endDate - startDate).Days;
                         string randomDate = startDate.AddDays(random.Next(range)).ToString("MM-dd-yyyy");
+
                         long size = 500000000L + (long)(random.NextDouble() * (50000000000L - 500000000L));
+
                         string firmware = random.Next(1, 14).ToString() + "." + random.Next(0, 100).ToString("D2");
 
                         string defaultName = string.Empty;
@@ -574,21 +582,21 @@ public class Utilities : MonoBehaviour
                         var defaultJson = new
                         {
                             DATA = new Dictionary<string, object>
-                    {
-                        {
-                            downloadLink, new
                             {
-                                title_id = "CUSA" + id,
-                                region,
-                                name = defaultName,
-                                version,
-                                release = randomDate,
-                                size,
-                                min_fw = firmware,
-                                cover_url = (string)null
+                                {
+                                    downloadLink, new
+                                    {
+                                        title_id = "CUSA" + id,
+                                        region,
+                                        name = defaultName,
+                                        version,
+                                        release = randomDate,
+                                        size,
+                                        min_fw = firmware,
+                                        cover_url = (string)null
+                                    }
+                                }
                             }
-                        }
-                    }
                         };
 
                         string jsonString = JsonConvert.SerializeObject(defaultJson, Formatting.Indented);
@@ -711,7 +719,11 @@ public class Utilities : MonoBehaviour
             }
 
             while (toCreate.Count > 0)
-                Directory.CreateDirectory(toCreate.Pop());
+            {
+                string dirToCreate = toCreate.Pop();
+                Directory.CreateDirectory(dirToCreate);
+                Print(LogType.Log, $"Created directory: {dirToCreate}");
+            }
         }
 
         public static bool IsValidPackageFile(string filePath)  // shoutout LM
@@ -858,34 +870,6 @@ public class Utilities : MonoBehaviour
 
     public class URL
     {
-        public static bool IsValidURI(string url)
-        {
-            if (IO.DoesPathExist(url)) return true;
-            if (string.IsNullOrWhiteSpace(url) || string.IsNullOrEmpty(url)) return false;
-
-            url = URL.ProperFormatUrl(url);
-
-            Uri uri;
-            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
-            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
-            {
-                if (!IO.DoesPathExist(url))
-                    return false;
-            }
-
-            return true;
-        }
-
-        public static string DecryptBase64(string encodedString)
-        {
-            if (IsValidURI(encodedString)) return encodedString;
-
-            byte[] decodedBytes = Convert.FromBase64String(encodedString);
-            string decodedString = Encoding.UTF8.GetString(decodedBytes);
-
-            return decodedString;
-        }
-
         public static string ProperFormatUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
@@ -933,6 +917,34 @@ public class Utilities : MonoBehaviour
             }
 
             return scheme + sb.ToString();
+        }
+
+        public static bool IsValidURI(string url)
+        {
+            if (IO.DoesPathExist(url)) return true;
+            if (string.IsNullOrWhiteSpace(url) || string.IsNullOrEmpty(url)) return false;
+
+            url = URL.ProperFormatUrl(url);
+
+            Uri uri;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out uri) ||
+            !Regex.IsMatch(url, @"^(http(s)?):\/\/[^\s\/$.?#].[^\s]*$", RegexOptions.IgnoreCase))
+            {
+                if (!IO.DoesPathExist(url))
+                    return false;
+            }
+
+            return true;
+        }
+
+        public static string DecryptBase64(string encodedString)
+        {
+            if (IsValidURI(encodedString)) return encodedString;
+
+            byte[] decodedBytes = Convert.FromBase64String(encodedString);
+            string decodedString = Encoding.UTF8.GetString(decodedBytes);
+
+            return decodedString;
         }
 
         public static bool IsValidImageType(string url)
