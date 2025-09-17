@@ -1,6 +1,13 @@
 # FPKGi - Nightly Changelog
 
 <details>
+<summary>[ v1.01.1-release Build: 20 ] from Sept 11th, 2025</summary>
+
+### Fixes, Resolutions & More
+- Resolve issues creating config / content JSON(s) hard-locking and crashing app.
+<br></details>
+
+<details>
 <summary>[ v1.01.0-release Build: 79 ] from Sept 11th, 2025</summary>
 
 ### Improvements & Optimizations
