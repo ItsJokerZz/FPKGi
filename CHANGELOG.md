@@ -1,6 +1,47 @@
 # FPKGi - Nightly Changelog
 
 <details>
+<summary>[ v1.10.0-release Build: 437 ] from Jan 27th, 2026</summary>
+
+### Additions
+- Adds a download queue feature for content management
+- Adds support for additional storage devices in the UI
+- Enables "Delete After Install" functionality for PS5
+- Shows matching box art depending on the system
+
+### Improvements & Optimizations
+- Notifies users of installations that need to be cancelled
+- Saves menu scroll position when closing the menu
+- Allows installing a package over an existing one
+- Shows current used storage on the PS5 system
+- Logs now display elapsed time for app initialization
+
+### Fixes, Resolutions & More
+- Config now applies correctly when opening the menu
+- Crashes with both download methods have been resolved
+- Installation now works even if the title already exists
+- FPS drop on the ALL content page has been addressed
+- PS5 firmware is now detected correctly in logs
+- Content state updates properly after an update
+- Default configuration path has been corrected
+<br></details>
+
+<details>
+<summary>[ v1.01.0-release Build: 79 ] from Sept 11th, 2025</summary>
+
+### Improvements & Optimizations
+- Changed the write speed to bits per second for consistency.
+- Made log PS4/5 and its firmware for future debugging.
+- Updated logging and their types for better information.
+- App now adds missing `config.json` values on save/load.
+
+### Fixes, Resolutions & More
+- Updated all URLs pointing to my old site to GitHub Gists.
+- Made sure to remove whitespace & encode all used URLs.
+- Added etaHEN whitelist jailbreak method to fix spam issue.
+<br></details>
+
+<details>
 <summary>[ v1.01.1-release Build: 20 ] from Sept 11th, 2025</summary>
 
 ### Fixes, Resolutions & More
