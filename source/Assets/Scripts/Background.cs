@@ -2,7 +2,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -15,8 +14,7 @@ using static JsonData;
 using static UOBWrapper;
 using static Utilities;
 using static Variables;
-using Application =
-    UnityEngine.Application;
+using Application = UnityEngine.Application;
 
 public class Background : MonoBehaviour
 {
@@ -42,17 +40,11 @@ public class Background : MonoBehaviour
     public Transform controlContainer;
 
     [SerializeField]
-    public GameObject touch, cross,
-        square, triangle, circle;
+    public GameObject touch, cross, square,
+        triangle, circle, R3, dpad_left;
 
     public static void SaveConfiguration()
     {
-        if (!isConsole)
-        {
-            directoryPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\";
-            downloadPath = "D:\\Projects\\Unity\\PS4\\FPKGi\\DATA\\Downloads\\";
-        }
-
         string _sortCriteria = null;
         switch (sortCriteria)
         {
@@ -221,10 +213,7 @@ public class Background : MonoBehaviour
         #endregion
 
         string jsonContent = File.ReadAllText(configPath);
-        var config = JsonConvert.DeserializeObject<Config>(jsonContent);
-        if (config == null)
-            config = new Config();
-
+        var config = JsonConvert.DeserializeObject<Config>(jsonContent) ?? new Config();
         if (config.filtering == null)
             config.filtering = new ContentFilter();
         if (config.filtering.sort == null)
@@ -280,19 +269,19 @@ public class Background : MonoBehaviour
         else if (sortType == "titleid") sortCriteria = 3;
         else sortCriteria = 0;
 
-        ascending = (config.filtering.sort != null) ? config.filtering.sort.ascending : true;
+        ascending = config.filtering.sort == null || config.filtering.sort.ascending;
         filteredRegions = (config.filtering.regions != null) ? config.filtering.regions.Distinct().ToArray() : new string[0];
 
-        directDownload = (config.preferences.downloads != null) ? config.preferences.downloads.directDownload : true;
+        directDownload = config.preferences.downloads == null || config.preferences.downloads.directDownload;
         downloadPath = (config.preferences.downloads != null && !string.IsNullOrEmpty(config.preferences.downloads.downloadPath)) ?
-                       config.preferences.downloads.downloadPath : "/data/FPKGi/Downloads";
-        installAfter = (config.preferences.downloads != null) ? config.preferences.downloads.installAfter : true;
-        deleteAfter = (config.preferences.downloads != null) ? config.preferences.downloads.deleteAfter : true;
-        deleteOnCancel = (config.preferences.downloads != null) ? config.preferences.downloads.deleteOnCancel : false;
+                       config.preferences.downloads.downloadPath : "/user/data/FPKGi/Downloads";
+        installAfter = config.preferences.downloads == null || config.preferences.downloads.installAfter;
+        deleteAfter = config.preferences.downloads == null || config.preferences.downloads.deleteAfter;
+        deleteOnCancel = (config.preferences.downloads != null) && config.preferences.downloads.deleteOnCancel;
 
-        background_uri = (config.preferences.application != null) ? config.preferences.application.background_uri : null;
-        backgroundMusic = (config.preferences.application != null) ? config.preferences.application.backgroundMusic : true;
-        enableUpdates = (config.preferences.application != null) ? config.preferences.application.enableUpdates : true;
+        background_uri = config.preferences.application?.background_uri;
+        backgroundMusic = config.preferences.application == null || config.preferences.application.backgroundMusic;
+        enableUpdates = config.preferences.application == null || config.preferences.application.enableUpdates;
         populateViaWeb = loadedOffline == false && (config.preferences.application != null && config.preferences.application.populateViaWeb);
 
         FindObjectOfType<Background>()?.LoadCustomBackground();
@@ -365,22 +354,12 @@ public class Background : MonoBehaviour
         UI.ShowUIState(null);
 
         if (isConsole)
-        {
-            etaHEN = UOB.IsPlayStation5();
-            GoldHEN = !etaHEN;
-
-            QualitySettings.vSyncCount = 1;
-            Application.targetFrameRate = etaHEN == true ? 120 : 60;
-        }
+            GoldHEN = !(etaHEN = UOB.IsPlayStation5());
         else
         {
             directoryPath = Path.GetFullPath(Application.dataPath + @"\..\DATA\");
-            downloadPath = Path.GetFullPath(Application.dataPath + @"\..\DATA\Downloads\"); 
-
-            QualitySettings.vSyncCount = 0;
-            Application.targetFrameRate = 240;
+            downloadPath = Path.GetFullPath(Application.dataPath + @"\..\DATA\Downloads\");
         }
-
         if (directoryPath.Contains("/data/") && !directoryPath.StartsWith("/user/"))
             directoryPath = Path.Combine("/user", directoryPath.TrimStart('/')).Replace("\\", "/");
 
@@ -390,24 +369,13 @@ public class Background : MonoBehaviour
         if (!downloadPath.EndsWith("/")) downloadPath += "/";
         if (!directoryPath.EndsWith("/")) directoryPath += "/";
 
-        directoryPath = Path.GetFullPath(directoryPath)
-            .Replace("\\", Path.DirectorySeparatorChar.ToString())
-            .Replace("/", Path.DirectorySeparatorChar.ToString());
-
-        downloadPath = Path.GetFullPath(downloadPath)
-            .Replace("\\", Path.DirectorySeparatorChar.ToString())
-            .Replace("/", Path.DirectorySeparatorChar.ToString());
-
         initializedApp = true;
     }
+    [DllImport("UnityOrbisBridge")] public static extern IntPtr GetDiskInfo(string type, string path);
 
     public IEnumerator UpdateDisplayInfo()
     {
-        float? temperature = null;
-        string freeSpace = string.Empty;
-
         Print(LogType.Assert, "Displaying content and system information...");
-
         UI.FindInactiveObjectsByPath("Canvas/Main/ContentSort")?.SetActive(true);
         UI.FindInactiveObjectsByPath("Canvas/Main/PkgCount")?.SetActive(true);
         UI.FindInactiveObjectsByPath("Canvas/Main/Temperature")?.SetActive(true);
@@ -415,44 +383,41 @@ public class Background : MonoBehaviour
 
         InitializePkgContent();
 
+        var freeSpaceText = UI.FindInactiveObjectsByPath("Canvas/Main/FreeSpace")?.GetComponent<Text>();
+        var temperatureText = UI.FindInactiveObjectsByPath("Canvas/Main/Temperature")?.GetComponent<Text>();
+
+        if (freeSpaceText != null) freeSpaceText.text = "Not Available";
+        if (temperatureText != null) temperatureText.text = "Not Available";
+
         while (true)
         {
-            var freeSpaceText = UI.FindInactiveObjectsByPath("Canvas/Main/FreeSpace")?.GetComponent<Text>();
-            var temperatureText = UI.FindInactiveObjectsByPath("Canvas/Main/Temperature")?.GetComponent<Text>();
+            string mountPoint = "/user";
+            if (downloadPath.StartsWith("/mnt/usb") || downloadPath.StartsWith("/mnt/ext"))
+            {
+                var parts = downloadPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2) mountPoint = $"/{parts[0]}/{parts[1]}";
+            }
 
             if (isConsole)
             {
-                temperature = UOB.GetTemperature(UOB.Temperature.CPU);
+                UpdateTemperature(temperatureText,
+                    new Color32(119, 221, 119, 255),
+                    new Color32(255, 237, 0, 255),
+                    new Color32(156, 82, 82, 255),
+                    UOB.Temperature.CPU, 55f, 70f);
 
-                if (GoldHEN == true)
-                    freeSpace = UOB.GetDiskInfo(UOB.DiskInfo.Free);
-            }
-
-            bool freeSpaceChanged = freeSpaceText != null && freeSpaceText.text != freeSpace;
-            bool temperatureChanged = temperatureText != null && temperatureText.text != temperature.ToString();
-
-            if ((freeSpaceText != null && freeSpaceChanged) || (temperatureText != null && temperatureChanged))
-            {
-                if (isConsole)
-                {
-                    if (GoldHEN == true)
-                        UpdateDiskInfo(freeSpaceText, UOB.DiskInfo.Free);
-                    else freeSpaceText.text = "Not Yet Supported";
-
-                    UpdateTemperature(temperatureText,
-                            new Color32(119, 221, 119, 255),
-                            new Color32(255, 237, 0, 255),
-                            new Color32(156, 82, 82, 255),
-                            UOB.Temperature.CPU, 55f, 70f);
-                }
-            }
-
-            if (!isConsole)
-            {
                 if (freeSpaceText != null)
-                    freeSpaceText.text = "Not Available";
-                if (temperatureText != null)
-                    temperatureText.text = "Not Available";
+                    freeSpaceText.text = $"Free: {Marshal.PtrToStringAnsi(GetDiskInfo(mountPoint, "free"))}";
+                //    UpdateDiskInfo(freeSpaceText, UOB.DiskInfo.Free);
+
+                /*
+                string val0 = Marshal.PtrToStringAnsi(GetDiskInfo("/data", "percent"));
+                string val1 = Marshal.PtrToStringAnsi(GetDiskInfo("/data", "total"));
+                string val2 = Marshal.PtrToStringAnsi(GetDiskInfo("/data", "used"));
+                string val3 = Marshal.PtrToStringAnsi(GetDiskInfo("/data", "free"));
+
+                Print(LogType.Assert, $"PERCENT: {val0}\n" + $"TOTAL: {val1}\n" + $"USED: {val2}\n" + $"FREE: {val3}");
+                */
             }
 
             yield return new WaitForSeconds(1f);
@@ -473,8 +438,6 @@ public class Background : MonoBehaviour
 
                 var parts = UI.FormatVersion(version).Split('.');
                 fileVersion = $"V{int.Parse(parts[0]):D2}{int.Parse(parts[1]):D2}";
-
-                Print(fileVersion);
 
                 string path;
                 if (isConsole)
@@ -535,30 +498,97 @@ public class Background : MonoBehaviour
         return true;
     }
 
+    /*
+       private Dictionary<string, SfoHandler.SfoInfo> pageSfo = new Dictionary<string, SfoHandler.SfoInfo>();
+
+       public async Task FetchAndLogSfo(string pkgUrl)
+       {
+           var sfo = await PkgHandler.DownloadAndParseParamSfo(pkgUrl);
+
+           foreach (var entry in sfo.AllEntries)
+           {
+               var key = entry.Key;
+               var value = entry.Value as string;
+
+               if (key == null) continue;
+           }
+
+           var titleEntry = sfo.AllEntries.FirstOrDefault(e => (e.Key) == "TITLE_ID");
+           var titleId = titleEntry != null ? titleEntry.Value as string : null;
+
+           if (!string.IsNullOrEmpty(titleId))
+           {
+               if (pageSfo.ContainsKey(titleId))
+                   pageSfo[titleId] = sfo;
+               else
+                   pageSfo.Add(titleId, sfo);
+           }
+       }
+
+       private static async Task<byte[]> FetchIconBytes(string pkgUrl)
+       {
+           try
+           {
+               var offset = await PngHandler.FindPngOffset(pkgUrl);
+               if (!offset.HasValue)
+               {
+                   Print("icon0.png not found in stream.", LogType.Warning);
+                   return null;
+               }
+
+               var bytes = await PngHandler.ReadPngBytes(pkgUrl, offset.Value);
+               if (bytes == null || bytes.Length == 0)
+               {
+                   Print("icon0.png bytes are empty or null.", LogType.Error);
+                   return null;
+               }
+
+               int previewLen = Math.Min(bytes.Length, 128);
+               string previewHex = BitConverter.ToString(bytes, 0, previewLen).Replace("-", " ");
+
+               return bytes;
+           }
+           catch (Exception ex)
+           {
+               Print($"Failed to fetch icon0.png bytes: {ex.GetType().Name}: {ex.Message}", LogType.Error);
+               return null;
+           }
+       }
+    */
+
+    [DllImport("UnityOrbisBridge")] public static extern long GetRemoteFileSize(string url);
+
     private IEnumerator Start()
     {
         while (!initializedApp) yield return null;
 
         if (isConsole)
         {
+            float jbStart = Time.time;
             UOB.BreakFromSandbox();
 
-            float startTime = Time.time;
-            string henFolder = GoldHEN == true ? "/data/GoldHEN/" : "/data/etaHEN/";
+            while (!IO.DoesPathExist("/system/common/lib"))
+                yield return null;
 
             if (IO.DoesPathExist("/data/UnityOrbisBridge.log"))
                 File.Delete("/data/UnityOrbisBridge.log");
 
-            string consoleType = etaHEN == true ? "PS5" : "PS4";
-            string fwVersion = Marshal.PtrToStringAnsi(UOB.GetFWVersion());
-            Print(LogType.Assert, $"Running on {consoleType} ({fwVersion})");
+            string consoleType = etaHEN == true ? "5" : "4";
+            string fwVersion = Marshal.PtrToStringAnsi(UOB.GetFWVersion()).Replace(" ", "");
+            Print(LogType.Assert, $"Currently running on PlayStation {consoleType} ({fwVersion})");
+            Print(LogType.Assert, $"App has broken from the sandbox in {Time.time - jbStart}s!");
 
-            while (!IO.DoesPathExist(henFolder))
+            int SceAppInstUtil = UOB.SafeLoadModule("/system/common/lib/libSceAppInstUtil.sprx");
+            int SceBgft = UOB.SafeLoadModule("/system/common/lib/libSceBgft.sprx");
+            while (SceAppInstUtil <= 0 || SceBgft <= 0)
                 yield return null;
 
-            Print(LogType.Assert, $"Successfully broke from sandbox in {Time.time - startTime} seconds!");
+            Print(LogType.Assert, "Successfully loaded necessary SCE libraries...");
 
             UOB.InitializeNativeDialogs();
+
+            //   long app_size = GetRemoteFileSize("https://github.com/ItsJokerZz/FPKGi/releases/download/v1.01.1/FPKGi_v1.01.1-release.pkg");
+            //   Print(LogType.Log, $"TEST APP SIZE: {app_size}");
         }
 
         IO.EnsureDirectoryExists(Path.Combine(directoryPath, "Backgrounds"));
@@ -571,25 +601,64 @@ public class Background : MonoBehaviour
             while (!task.IsCompleted) yield return null;
         }
 
-        var downloadTask = DownloadAsBytes("https://github.com/ItsJokerZz/FPKGi/");
-
         float downloadStart = Time.time;
+        var downloadTask = DownloadAsBytes(updateHashUrl);
 
-        yield return new WaitUntil(() => downloadTask.IsCompleted || (Time.time - downloadStart) >= 5);
+        while (!downloadTask.IsCompleted && Time.time - downloadStart < 5)
+            yield return null;
 
-        if (string.IsNullOrEmpty(downloadTask.Result))
+        string result = null;
+        if (downloadTask.IsCompleted && !downloadTask.IsFaulted)
+            result = downloadTask.Result;
+
+        if (string.IsNullOrEmpty(result))
         {
-            loadedOffline = true;
-
-            if (GoldHEN == true)
-                UOB.TextNotify(222, "Please connect to the internet and/or use local connection content!");
+            if (isConsole)
+                UOB.TextNotify(222, "Please connect to the internet and or use local connection content!");
 
             Print(LogType.Warning, "Loaded offline, toggling \"Populate Via Web\" to prevent hanging...");
+
+            loadedOffline = true;
+            populateViaWeb = false;
+            SaveConfiguration();
         }
         else
             loadedOffline = false;
 
         fullyInitialized = true;
+
+        /*
+           string pkgUrl = "https://pkg-zone.com/download/ps4/PKGI13337/latest";
+           string path = Path.Combine(directoryPath, "/TEMP/LOL/icon0.png");
+
+           IO.EnsureDirectoryExists(path);
+
+           var sfoTask = FetchAndLogSfo(pkgUrl);
+           yield return new WaitUntil(() => sfoTask.IsCompleted);
+
+           var sfoInfo = pageSfo["PKGI13337"];
+           var sb = new System.Text.StringBuilder();
+           sb.AppendLine("SFO Info for PKGI13337:");
+
+           foreach (var entry in sfoInfo.AllEntries)
+           {
+               var key = entry.Key as string;
+               if (key == null) continue;
+               sb.AppendLine(key + " = " + (entry.Value ?? ""));
+           }
+
+           Print(LogType.Log, sb.ToString());
+
+           // var iconTask = FetchIconBytes(pkgUrl);
+           // yield return new WaitUntil(() => iconTask.IsCompleted);
+
+           // var iconBytes = iconTask.Result;
+           //if (iconBytes != null)
+           // {
+           //  SetImageFromBytes(iconBytes, ref background);
+           //   File.WriteAllBytes(path, iconBytes);
+           // }
+        */
 
     }
 

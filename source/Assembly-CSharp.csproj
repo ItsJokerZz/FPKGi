@@ -54,10 +54,12 @@
      <Compile Include="Assets\Scripts\Background.cs" />
      <Compile Include="Assets\Scripts\ContentHandler.cs" />
      <Compile Include="Assets\Scripts\ControlMenu.cs" />
+     <Compile Include="Assets\Scripts\FileHandlers.cs" />
      <Compile Include="Assets\Scripts\Globals\JsonData.cs" />
      <Compile Include="Assets\Scripts\Globals\UOBWrapper.cs" />
      <Compile Include="Assets\Scripts\Globals\Utilities.cs" />
      <Compile Include="Assets\Scripts\Globals\Variables.cs" />
+     <Compile Include="Assets\Scripts\NewBehaviourScript.cs" />
      <None Include="Assets\link.xml" />
  <Reference Include="UnityEngine.UI">
  <HintPath>C:/Program Files/Unity/Editor/Data/UnityExtensions/Unity/GUISystem/UnityEngine.UI.dll</HintPath>

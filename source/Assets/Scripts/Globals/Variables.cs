@@ -4,8 +4,8 @@ using UnityEngine.UI;
 
 public class Variables
 {
-    public static float version = 1.011f;
-    public static int buildNumber = 0020;
+    public static float version = 1.100f;
+    public static int buildNumber = 0437;
 
     public static bool? GoldHEN = null;
     public static bool? etaHEN = null;
@@ -24,14 +24,15 @@ public class Variables
         "https://gist.githubusercontent.com/ItsJokerZz/6e979e91d020bb574c66e74793b4201f/raw/FPKGi_latest.size?cache-bust=1";
 
     public static string updateHashUrl =
-        "https://raw.githubusercontent.com/ItsJokerZz/FPKGi/release/HASH.md5?cache-bust=1";
+        "https://raw.githubusercontent.com/ItsJokerZz/FPKGi/refs/heads/release/HASH.md5?cache-bust=1";
 
-    public static string updateDownloadUrl =>
-        GoldHEN == true
+    public static string updateDownloadUrl => GoldHEN == true
             ? "https://pkg-zone.com/download/ps4/PKGI13337/latest"
             : "https://pkg-zone.com/download/ps5/PKGI13337/latest";
 
     public static bool isConsole = Application.platform != RuntimePlatform.WindowsEditor;
+
+    public static readonly string iconPath = "/user/appmeta/PKGI13337/icon0.png";
 
     #region Global Variabales
     public static Color blueish = new Color32(72, 142, 255, 255);
@@ -90,8 +91,8 @@ public class Variables
     #endregion
 
     #region User Configuration
-    public static string directoryPath = "/data/FPKGi",
-        downloadPath = $"{directoryPath}Downloads",
+    public static string directoryPath = "/user/data/FPKGi/",
+        downloadPath = $"{directoryPath}Downloads/",
         background_uri = null;
 
     public static bool ascending = true,

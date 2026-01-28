@@ -20,29 +20,29 @@ using static Variables;
 public class ControlMenu : MonoBehaviour
 {
     #region Fields
-    [SerializeField]
-    private GameObject
+    public GameObject
         menuCanvas,
         detailsCanvas,
         downloadCanvas,
         cancelCanvas,
-        updateCanvas;
+        updateCanvas,
+        queueCanvas;
 
     [SerializeField]
     private float
         inputCooldown = 0.20f,
         cooldownTimer = 0.00f;
 
-    [SerializeField]
-    public Scrollbar scrollbar;
+    public Scrollbar content_scrollbar,
+        queue_scrollbar;
 
+    public GameObject queued_pkgs;
+
+    private AudioSource audioSource;
     #endregion
 
     #region Variables
-    private AudioSource audioSource;
-
-    private bool
-        menuLoaded = false, isDownloading = false;
+    private bool menuLoaded = false, isDownloading = false;
 
     public static bool reloadTriggered = false;
 
@@ -54,11 +54,17 @@ public class ControlMenu : MonoBehaviour
 
     public string sanitizedFilename;
 
+    public List<string> queueList = new List<string>();
+    private int queueItemsPerPage = 24;
+    public int queueCurrentPage = 0;
+    public int queueHighlightIndex = 0;
     #endregion
 
     #region Coroutine Handling
     private IEnumerator InitializeCoroutine()
     {
+        float startTime = Time.time;
+
         while (!initializedApp)
             yield return null;
 
@@ -78,15 +84,19 @@ public class ControlMenu : MonoBehaviour
         Background background = FindObjectOfType<Background>();
 
         StartCoroutine(background?.UpdateDisplayInfo());
-        
+
         background?.InitializePkgContent();
         UIManagement.HighlightCurrentPkg();
 
-        if (backgroundMusic) 
+        if (backgroundMusic)
             audioSource.Play();
 
         if (enableUpdates)
             yield return CheckForAppUpdates();
+
+        float elapsed = Time.time - startTime;
+        string formatted = elapsed >= 1f ? $"{elapsed:F0}s" : $"{elapsed:F2}s";
+        Print(LogType.Log, $"Initialization completed in {formatted}!");
 
         yield return null;
     }
@@ -265,7 +275,7 @@ public class ControlMenu : MonoBehaviour
             string archiveFile = downloadedFile + ".zip";
             File.Move(downloadedFile + ".pkg", archiveFile);
             IO.EnsureDirectoryExists(downloadedFile);
-            UOB.ExtractZipFile(archiveFile, downloadedFile);
+            // UOB.ExtractZipFile(archiveFile, downloadedFile); // - uncomment this
 
             if (File.Exists(archiveFile))
                 File.Delete(archiveFile);
@@ -302,8 +312,12 @@ public class ControlMenu : MonoBehaviour
 
                 if ((hasDownloadCompleted && !downloadErrorOccurred && isValidPackage) && (isConsole && installAfter))
                 {
+                    var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                    if (!URL.IsValidURI(cover)) cover = iconPath;
+
                     Print(LogType.Log, $"Installing package {pkgFile}");
-                    UOB.InstallLocalPackage(pkgFile, currentContentItem.Value.name, deleteAfter);
+                    UOB.InstallLocalPackage(pkgFile, currentContentItem.Value.name, cover, deleteAfter);
+                    // UOB.InstallLocalPackage(pkgFile, currentContentItem.Value.name, deleteAfter);
 
                     if (GoldHEN == true && deleteAfter)
                         Directory.Delete(downloadedFile);
@@ -325,12 +339,334 @@ public class ControlMenu : MonoBehaviour
 
             if (hasDownloadCompleted && !downloadErrorOccurred && (isConsole && installAfter) && isValidPackage)
             {
+                var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                if (!URL.IsValidURI(cover)) cover = iconPath;
+
                 Print(LogType.Log, $"Installing package [{downloadedFile + ".pkg"}] " +
                     $"from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
-
-                UOB.InstallLocalPackage(downloadedFile + ".pkg", currentContentItem.Value.name, deleteAfter);
+                UOB.InstallLocalPackage(downloadedFile + ".pkg", currentContentItem.Value.name, cover, deleteAfter);
+                // UOB.InstallLocalPackage(downloadedFile + ".pkg", currentContentItem.Value.name, deleteAfter);
             }
         }
+
+        yield return null;
+    }
+
+    private IEnumerator UpdateDownloadProgressForQueue()
+    {
+        bool hasDownloadCompleted = false,
+             downloadErrorOccurred = false;
+
+        string progressPercentage = "0",
+               totalFileSize = "0",
+               downloadedBytes = "0",
+               networkSpeed = "0";
+
+        float lastUpdateTimestamp = Time.time,
+              downloadStartTimestamp = Time.time,
+              lastWriteTimestamp = Time.time,
+
+              smoothedNetworkSpeed = 0f,
+              smoothedWriteSpeed = 0f,
+
+              updateInterval = 0.5f,
+              minUpdateInterval = 0.2f,
+              maxUpdateInterval = 1.5f,
+              ewmaAlpha = 0.25f,
+
+              previousDownloadedBytes = 0f;
+
+        if (isConsole)
+            UOB.ResetDownloadVars();
+
+        isDownloading = true;
+
+        while (isDownloading && !hasDownloadCompleted)
+        {
+            if (isConsole)
+            {
+                if (UOB.HasDownloadErrorOccured())
+                {
+                    downloadErrorOccurred = true;
+                    hasDownloadCompleted = true;
+                }
+
+                if (UOB.HasDownloadCompleted())
+                    hasDownloadCompleted = true;
+
+                float parsedSpeed;
+                float.TryParse(Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("speed")),
+                    NumberStyles.Float, CultureInfo.InvariantCulture, out parsedSpeed);
+
+                networkSpeed = parsedSpeed.ToString("0.##", CultureInfo.InvariantCulture);
+
+                totalFileSize = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("filesize"));
+                downloadedBytes = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("downloaded"));
+
+                progressPercentage = Marshal.PtrToStringAnsi(UOB.GetDownloadInfo("progress"));
+                progressPercentage = progressPercentage == int.MinValue.ToString() ? "0" : progressPercentage;
+            }
+
+            if (Time.time - lastUpdateTimestamp >= updateInterval)
+            {
+                float elapsedDownloadTime = Time.time - downloadStartTimestamp;
+
+                ulong downloadedBytesValue;
+                ulong.TryParse(downloadedBytes, out downloadedBytesValue);
+
+                ulong totalFileSizeValue;
+                ulong.TryParse(totalFileSize, out totalFileSizeValue);
+
+                ulong networkSpeedValue;
+                ulong.TryParse(networkSpeed, out networkSpeedValue);
+
+                smoothedNetworkSpeed = smoothedNetworkSpeed == 0
+                    ? networkSpeedValue : (ulong)(ewmaAlpha * networkSpeedValue
+                    + (1 - ewmaAlpha) * smoothedNetworkSpeed);
+
+                updateInterval = smoothedNetworkSpeed > 1024
+                    ? Mathf.Max(minUpdateInterval, updateInterval * 0.95f)
+                    : Mathf.Min(maxUpdateInterval, updateInterval * 1.05f);
+
+                float timeDifference = Mathf.Max(0.1f, Time.time - lastWriteTimestamp);
+                ulong writeSpeed = (ulong)((downloadedBytesValue - previousDownloadedBytes) / timeDifference);
+
+                smoothedWriteSpeed = smoothedWriteSpeed == 0
+                    ? writeSpeed : (ulong)(ewmaAlpha * writeSpeed + (1 - ewmaAlpha) * smoothedWriteSpeed);
+
+                previousDownloadedBytes = downloadedBytesValue;
+
+                lastWriteTimestamp = Time.time;
+
+                ulong remainingBytes = totalFileSizeValue - downloadedBytesValue;
+                float effectiveSpeed = Math.Min(smoothedNetworkSpeed, smoothedWriteSpeed);
+
+                string formattedEstimatedTimeRemaining
+                    = FormatTime(effectiveSpeed > 0 ? remainingBytes / effectiveSpeed : 0);
+
+                float progressAsFloat;
+                float.TryParse(progressPercentage, out progressAsFloat);
+
+                progressAsFloat /= 100f;
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/Elapsed")?.GetComponent<Text>(),
+                    $"Elapsed: {FormatTime(elapsedDownloadTime)}");
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/WriteSpeed")?.GetComponent<Text>(),
+                    $"Write Speed: {FormatSpeed(smoothedWriteSpeed)}");
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/Percentage")?.GetComponent<Text>(),
+                    $"{progressPercentage}%");
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/DownloadSpeed")?.GetComponent<Text>(),
+                    $"{FormatSpeed(smoothedNetworkSpeed)}" +
+                    $" - {IO.FormatByteString(downloadedBytesValue)}" +
+                    $" of {IO.FormatByteString(totalFileSizeValue)}");
+
+                UI.ChangeText(downloadCanvas.transform.Find("Text/RemainingTime")?.GetComponent<Text>(),
+                    $"Remaining: {formattedEstimatedTimeRemaining}");
+
+                var progressBar = UI.FindInactiveObjectsByPath("Canvas/Download/ProgressBar/Progress")?.GetComponent<RectTransform>();
+
+                progressBar.pivot = new Vector2(0f, 0.5f);
+                progressBar.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, Mathf.Lerp(10.55f, 735.64f, progressAsFloat) - 10.56f);
+
+                progressBar.anchoredPosition = new Vector2(10.56f, progressBar.anchoredPosition.y);
+                UI.FindInactiveObjectsByPath("Canvas/Download/ProgressBar")?.SetActive(true);
+
+                lastUpdateTimestamp = Time.time;
+            }
+
+            yield return null;
+        }
+
+        // Reset download state but don't hide the canvas (let ProcessQueueItems handle that)
+        if (isConsole)
+            UOB.ResetDownloadVars();
+
+        isDownloading = false;
+
+        // Clear download progress text but keep canvas visible
+        if (downloadCanvas != null)
+        {
+            UI.ChangeText(UI.FindInactiveObjectsByPath("Canvas/Download/Text/Elapsed")?.GetComponent<Text>(), string.Empty);
+            UI.ChangeText(UI.FindInactiveObjectsByPath("Canvas/Download/Text/WriteSpeed")?.GetComponent<Text>(), string.Empty);
+            UI.ChangeText(UI.FindInactiveObjectsByPath("Canvas/Download/Text/Percentage")?.GetComponent<Text>(), string.Empty);
+            UI.ChangeText(UI.FindInactiveObjectsByPath("Canvas/Download/Text/RemainingTime")?.GetComponent<Text>(), string.Empty);
+            UI.FindInactiveObjectsByPath("Canvas/Download/ProgressBar")?.SetActive(false);
+        }
+
+        yield return null;
+    }
+
+    private IEnumerator ProcessQueueItems()
+    {
+        if (queueList.Count == 0) yield break;
+
+        // Close queue canvas
+        UI.ShowUIState(null);
+
+        // Create a copy of the queue list to process
+        List<string> itemsToProcess = new List<string>(queueList);
+
+        for (int i = 0; i < itemsToProcess.Count; i++)
+        {
+            string contentUrl = itemsToProcess[i];
+
+            // Find the content item from any available cache
+            KeyValuePair<string, GameContent>? contentItem = null;
+
+            // Search in allContentCache which contains everything
+            if (ContentHandler.allContentCache.ContainsKey(contentUrl))
+            {
+                contentItem = new KeyValuePair<string, GameContent>(contentUrl, ContentHandler.allContentCache[contentUrl]);
+            }
+
+            if (!contentItem.HasValue)
+            {
+                Print(LogType.Warning, $"Could not find content item for URL: {contentUrl}");
+                continue;
+            }
+
+            var gameContent = contentItem.Value.Value;
+
+            // Set up the current content item for the download process
+            currentContentItem = contentItem.Value;
+
+            // Sanitize filename
+            sanitizedFilename = IO.SanitizeFilename(gameContent.name);
+            if (UI.IsNonEnglish(sanitizedFilename))
+                sanitizedFilename = $"content-{contentOptions[contentFilter]}_{i + 1}";
+
+            string packagePath = $"{downloadPath}[{gameContent.title_id}] {sanitizedFilename}.pkg";
+
+            // Check if already downloaded
+            bool isAlreadyDownloaded = File.Exists(packagePath) && IO.IsValidPackageFile(packagePath);
+
+            if (isAlreadyDownloaded)
+            {
+                Print(LogType.Log, $"Package already downloaded: {gameContent.name}");
+
+                // Install directly if installAfter is enabled
+                if (isConsole && installAfter)
+                {
+                    var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                    if (!URL.IsValidURI(cover)) cover = iconPath;
+
+                    Print(LogType.Log, $"Installing package [{packagePath}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
+                    UOB.InstallLocalPackage(packagePath, gameContent.name, cover, deleteAfter);
+                    // UOB.InstallLocalPackage(packagePath, gameContent.name, deleteAfter);
+                }
+
+                // Remove from queue after successful installation
+                queueList.Remove(contentUrl);
+
+                // Update queue display if it's still active
+                if (queueCanvas.activeSelf)
+                {
+                    UpdateQueueDisplay();
+                }
+            }
+            else
+            {
+                // Download the package
+                var downloadlink = URL.ProperFormatUrl(URL.DecryptBase64(contentUrl));
+                if (!URL.IsValidURI(downloadlink))
+                {
+                    Print(LogType.Error, $"Invalid download URL: {downloadlink}");
+                    continue;
+                }
+
+                Print(LogType.Log, $"Processing {i + 1}/{itemsToProcess.Count}: {gameContent.name}");
+
+                if (directDownload)
+                {
+                    // Direct download mode - download file then install local package
+                    // Show download canvas for progress tracking
+                    UI.ShowUIState(downloadCanvas);
+
+                    // Update download canvas title for current item
+                    var name = UI.FindInactiveObjectsByPath("Canvas/Download/Text/Title")?.GetComponent<Text>();
+                    if (name != null)
+                    {
+                        UI.ChangeText(name, gameContent.name);
+                        UI.SetFontByText(ref name);
+                        if (name.font == FindObjectOfType<ContentHandler>()?.Arabic)
+                            name.fontSize = 28;
+                        else name.fontSize = 36;
+                    }
+
+                    if (isConsole)
+                    {
+                        UOB.DownloadPkgFile(downloadlink, downloadPath, $"[{gameContent.title_id}] {sanitizedFilename}", true, "NULL");
+                    }
+
+                    // Start download progress tracking for queue processing
+                    yield return StartCoroutine(UpdateDownloadProgressForQueue());
+
+                    // Check if download completed successfully
+                    if (File.Exists(packagePath) && IO.IsValidPackageFile(packagePath))
+                    {
+                        Print(LogType.Log, $"Successfully downloaded: {gameContent.name}");
+
+                        // Install if installAfter is enabled
+                        if (isConsole && installAfter)
+                        {
+                            var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                            if (!URL.IsValidURI(cover)) cover = iconPath;
+
+                            Print(LogType.Log, $"Installing package [{packagePath}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
+                            UOB.InstallLocalPackage(packagePath, gameContent.name, cover, deleteAfter);
+                            // UOB.InstallLocalPackage(packagePath, gameContent.name, deleteAfter);
+                        }
+
+                        // Remove from queue after successful download
+                        queueList.Remove(contentUrl);
+
+                        // Update queue display if it's still active
+                        if (queueCanvas.activeSelf)
+                        {
+                            UpdateQueueDisplay();
+                        }
+                    }
+                    else
+                    {
+                        Print(LogType.Error, $"Failed to download: {gameContent.name}");
+                    }
+                }
+                else
+                {
+                    // Background download mode - install web package directly
+                    if (isConsole)
+                    {
+                        var cover = URL.ProperFormatUrl(gameContent.cover_url);
+                        if (!URL.IsValidURI(cover)) cover = iconPath;
+                        UOB.InstallWebPackage(downloadlink, sanitizedFilename, gameContent.title_id, cover);
+                        // UOB.InstallWebPackage(downloadlink, sanitizedFilename, gameContent.name);
+
+                        // Remove from queue after calling install web package
+                        queueList.Remove(contentUrl);
+
+                        // Update queue display if it's still active
+                        if (queueCanvas.activeSelf)
+                        {
+                            UpdateQueueDisplay();
+                        }
+                    }
+                }
+            }
+        }
+
+        // Clear the queue after processing all items
+        queueList.Clear();
+
+        // Hide download canvas if it was shown (for direct downloads)
+        if (downloadCanvas.activeSelf)
+        {
+            UI.ShowUIState(null);
+        }
+
+        Print(LogType.Log, "Finished processing all queued items");
 
         yield return null;
     }
@@ -393,7 +729,6 @@ public class ControlMenu : MonoBehaviour
             yield return null;
         }
     }
-
     #endregion
 
     #region User Input Handling
@@ -471,6 +806,16 @@ public class ControlMenu : MonoBehaviour
                             }
                         }
 
+                        bool isPS4Content = IsPS4TitleId(currentContentItem.Value.title_id);
+
+                        var ps4Cover = UI.FindInactiveObjectsByPath("Canvas/Details/CoverArt/PS4Case")?.GetComponent<RawImage>();
+                        var ps5Cover = UI.FindInactiveObjectsByPath("Canvas/Details/CoverArt/PS5Case")?.GetComponent<RawImage>();
+
+                        if (ps4Cover != null) ps4Cover.gameObject.SetActive(isPS4Content);
+                        if (ps5Cover != null) ps5Cover.gameObject.SetActive(!isPS4Content);
+
+                        ps5Cover?.gameObject.SetActive(!isPS4Content);
+
                         UI.ShowUIState(detailsCanvas);
 
                         if (detailsCanvas == null) return;
@@ -509,7 +854,7 @@ public class ControlMenu : MonoBehaviour
                     }
                 }
 
-                if (menuCanvas.activeSelf && !downloadCanvas.activeSelf)
+                if (menuCanvas.activeSelf)
                 {
                     if (verticalInput != 0) NavigateMenu(verticalInput);
                     if (horizontalInput != 0 && selectedIndex == 4
@@ -517,7 +862,7 @@ public class ControlMenu : MonoBehaviour
                 }
                 else
                 {
-                    if (!detailsCanvas.activeSelf && !downloadCanvas.activeSelf && !cancelCanvas.activeSelf)
+                    if (!detailsCanvas.activeSelf && !queueCanvas.activeSelf)
                     {
                         if (Input.GetButtonDown("L1")) ScrollOption(-1);
                         if (Input.GetButtonDown("R1")) ScrollOption(1);
@@ -565,7 +910,7 @@ public class ControlMenu : MonoBehaviour
                                 contentScroll = 0;
                         }
 
-                        if (verticalInput != 0)
+                        if (verticalInput != 0 && !queueCanvas.activeSelf)
                         {
                             cooldownTimer = inputCooldown;
 
@@ -605,12 +950,169 @@ public class ControlMenu : MonoBehaviour
                                         = filteredCount > 0 ? filteredCount - 1 : 0;
                             }
                         }
+
+                        if (horizontalInput < 0 && !menuCanvas.activeSelf && !detailsCanvas.activeSelf && !queueCanvas.activeSelf)
+                        {
+                            cooldownTimer = inputCooldown;
+
+                            string contentUrl = currentContentItem.Key;
+                            string contentName = currentContentItem.Value.name;
+
+                            // Check if item is in queue list
+                            bool inQueueList = queueList.Contains(contentUrl);
+
+
+                            if (inQueueList)
+                            {
+                                // Remove from queue
+                                RemoveFromQueueUI(contentUrl);
+                                Print(LogType.Log, $"Removed '{contentName}' from queue");
+                            }
+                            else
+                            {
+                                // Add to queue
+                                AddToQueueUI(currentContentItem);
+                                Print(LogType.Log, $"Added '{contentName}' to queue");
+                            }
+                        }
+
+                        if (Input.GetButtonDown("R3"))
+                        {
+                            if (queueCanvas.activeSelf)
+                                UI.ShowUIState(null);
+                            else
+                            {
+                                UI.ShowUIState(queueCanvas);
+                                // Reset highlight index when opening queue
+                                queueHighlightIndex = 0;
+                                queueCurrentPage = 0;
+                                // Update queue display when opening
+                                UpdateQueueDisplay();
+                                // Update queue scrollbar when opening
+                                if (queue_scrollbar != null)
+                                    UI.UpdateScrollbar();
+                            }
+                        }
+
+                        // Handle vertical input when queue canvas is open
+                        if (queueCanvas.activeSelf && verticalInput != 0)
+                        {
+                            cooldownTimer = inputCooldown;
+
+                            float clampedValue = Mathf.Clamp(verticalInput, 0f, 1f);
+                            bool scrollDown = clampedValue == 0;
+                            bool scrollUp = clampedValue > 0f;
+
+                            int totalItems = queueList.Count;
+                            int totalPages = Mathf.CeilToInt((float)totalItems / queueItemsPerPage);
+                            int itemsOnCurrentPage = Mathf.Min(queueItemsPerPage, totalItems - (queueCurrentPage * queueItemsPerPage));
+
+                            if (scrollDown)
+                            {
+                                queueHighlightIndex++;
+                                if (queueHighlightIndex >= itemsOnCurrentPage)
+                                {
+                                    // Move to next page
+                                    queueCurrentPage++;
+                                    if (queueCurrentPage >= totalPages)
+                                    {
+                                        queueCurrentPage = 0;
+                                        queueHighlightIndex = 0;
+                                    }
+                                    else
+                                    {
+                                        queueHighlightIndex = 0;
+                                    }
+                                }
+                            }
+                            else if (scrollUp)
+                            {
+                                queueHighlightIndex--;
+                                if (queueHighlightIndex < 0)
+                                {
+                                    // Move to previous page
+                                    queueCurrentPage--;
+                                    if (queueCurrentPage < 0)
+                                    {
+                                        queueCurrentPage = Mathf.Max(0, totalPages - 1);
+                                        int itemsOnLastPage = Mathf.Min(queueItemsPerPage, totalItems - (queueCurrentPage * queueItemsPerPage));
+                                        queueHighlightIndex = Mathf.Max(0, itemsOnLastPage - 1);
+                                    }
+                                    else
+                                    {
+                                        int itemsOnPrevPage = Mathf.Min(queueItemsPerPage, totalItems - (queueCurrentPage * queueItemsPerPage));
+                                        queueHighlightIndex = Mathf.Max(0, itemsOnPrevPage - 1);
+                                    }
+                                }
+                            }
+
+                            // Update queue display with highlighting
+                            UpdateQueueDisplay();
+
+                            // Update scrollbar
+                            if (queue_scrollbar != null)
+                                UI.UpdateScrollbar();
+                        }
+
+                        // Handle horizontal input when queue canvas is open
+                        if (queueCanvas.activeSelf && horizontalInput < 0)
+                        {
+                            cooldownTimer = inputCooldown;
+
+                            // Calculate the actual index in the queue list
+                            int actualIndex = (queueCurrentPage * queueItemsPerPage) + queueHighlightIndex;
+
+                            if (actualIndex >= 0 && actualIndex < queueList.Count)
+                            {
+                                string contentUrlToRemove = queueList[actualIndex];
+
+                                // Find the content item to get the name for logging
+                                string contentName = "Unknown";
+
+                                // Search in allContentCache which contains everything
+                                if (ContentHandler.allContentCache.ContainsKey(contentUrlToRemove))
+                                {
+                                    contentName = ContentHandler.allContentCache[contentUrlToRemove].name;
+                                }
+
+                                // Remove from queue
+                                queueList.RemoveAt(actualIndex);
+
+                                // Simple adjustment: if highlight is now out of bounds, move it back
+                                int itemsOnCurrentPage = Mathf.Min(queueItemsPerPage, queueList.Count - (queueCurrentPage * queueItemsPerPage));
+                                if (queueHighlightIndex >= itemsOnCurrentPage)
+                                {
+                                    queueHighlightIndex = Mathf.Max(0, itemsOnCurrentPage - 1);
+                                }
+
+                                Print(LogType.Log, $"Removed '{contentName}' from queue");
+
+                                // Update queue display
+                                UpdateQueueDisplay();
+                            }
+                        }
                     }
                 }
             }
 
             if (Input.GetButtonDown("X"))
             {
+                // Handle X button press on queue canvas
+                if (queueCanvas.activeSelf)
+                {
+                    if (queueList.Count > 0)
+                    {
+                        Print(LogType.Log, $"Starting download and install of {queueList.Count} queued items");
+                        downloadCoroutine = StartCoroutine(ProcessQueueItems());
+                        return;
+                    }
+                    else
+                    {
+                        Print(LogType.Log, "Queue is empty, nothing to download");
+                        return;
+                    }
+                }
+
                 sanitizedFilename =
                    IO.SanitizeFilename(currentContentItem.Value.name);
 
@@ -679,10 +1181,14 @@ public class ControlMenu : MonoBehaviour
 
                         if (directDownload)
                         {
-                            if (currentPkg.Downloaded.text == "+")
+                            if (currentPkg.Downloaded.text == "+" || currentPkg.Downloaded.text == "x")
                             {
+                                var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
+                                if (!URL.IsValidURI(cover)) cover = iconPath;
+
                                 Print(LogType.Log, $"Installing package [{packagePath}] from {downloadPath} & {(deleteAfter ? "deleting file after." : "keeping file.")}");
-                                UOB.InstallLocalPackage(packagePath, currentContentItem.Value.name, deleteAfter);
+                                UOB.InstallLocalPackage(packagePath, currentContentItem.Value.name, cover, deleteAfter);
+                                // UOB.InstallLocalPackage(packagePath, currentContentItem.Value.name, deleteAfter);
                             }
                             else
                             {
@@ -706,8 +1212,10 @@ public class ControlMenu : MonoBehaviour
                             if (isConsole)
                             {
                                 var cover = URL.ProperFormatUrl(currentContentItem.Value.cover_url);
-                                if (!URL.IsValidURI(cover)) cover = "NULL";
-                                UOB.InstallWebPackage(downloadlink, sanitizedFilename, cover);
+                                if (!URL.IsValidURI(cover)) cover = iconPath;
+
+                                UOB.InstallWebPackage(downloadlink, sanitizedFilename, currentContentItem.Value.title_id, cover);
+                                // UOB.InstallWebPackage(downloadlink, sanitizedFilename, currentContentItem.Value.name);
                             }
                         }
                     }
@@ -719,7 +1227,12 @@ public class ControlMenu : MonoBehaviour
                 cooldownTimer = inputCooldown;
                 float currentTime = Time.unscaledTime;
 
-                if (currentTime - lastCirclePressTime <= 0.4f)
+                // Only allow double-press exit when no special canvas is shown (main canvas only)
+                bool isOnMainCanvas = !menuCanvas.activeSelf && !detailsCanvas.activeSelf &&
+                                     !downloadCanvas.activeSelf && !cancelCanvas.activeSelf &&
+                                     !updateCanvas.activeSelf && !queueCanvas.activeSelf;
+
+                if (isOnMainCanvas && currentTime - lastCirclePressTime <= 0.4f)
                 {
                     isDoublePress = true;
                     SaveConfiguration();
@@ -770,6 +1283,11 @@ public class ControlMenu : MonoBehaviour
                             UI.ShowUIState(downloadCanvas);
                         else
                             UI.ShowUIState(null);
+                    }
+                    else if (queueCanvas.activeSelf)
+                    {
+                        UI.ShowUIState(null);
+                        return;
                     }
                     else if (isDownloading)
                         UI.ShowUIState(cancelCanvas);
@@ -885,8 +1403,8 @@ public class ControlMenu : MonoBehaviour
                     break;
 
                 case 11:
-                    if (GoldHEN == true || !isConsole)
-                        ToggleOption(11, "Delete After Install", ref deleteAfter);
+                    //  if (GoldHEN == true || !isConsole)
+                    ToggleOption(11, "Delete After Install", ref deleteAfter);
                     break;
 
                 case 12:
@@ -945,8 +1463,7 @@ public class ControlMenu : MonoBehaviour
                     IntPtr kbInput = UOB.GetKeyboardInput("Set Download Location...", downloadPath);
                     string kbOutput = Marshal.PtrToStringAnsi(kbInput);
 
-                    if (string.IsNullOrEmpty(kbOutput) ||
-                      kbOutput == "NULL") return;
+                    if (string.IsNullOrEmpty(kbOutput) || kbOutput == "NULL") return;
                     else downloadPath = kbOutput;
                     reloadTriggered = true;
                     break;
@@ -1005,14 +1522,24 @@ public class ControlMenu : MonoBehaviour
     {
         UI.ChangeText(menuTexts, 4, $"> {contentOptions[contentFilter]}");
 
-        if (menuTexts[4] != null && menuTexts[4].text.Contains("^"))
-            UI.ChangeText(menuTexts, 4, $"v {sortByOptions[sortCriteria]}");
-        else if (menuTexts[4] != null && menuTexts[4].text.Contains("v"))
-            UI.ChangeText(menuTexts, 4, $"^ {sortByOptions[sortCriteria]}");
+        for (int i = 0; i <= 3; i++)
+        {
+            if (menuTexts[i] != null)
+            {
+                if (i == sortCriteria)
+                {
+                    string arrow = ascending ? "^" : "v";
+                    UI.ChangeText(menuTexts, i, $"{arrow} {sortByOptions[i]}");
+                }
+                else
+                    UI.ChangeText(menuTexts, i, sortByOptions[i]);
+            }
+        }
 
+        string[] regionNames = { "USA", "Europe", "Japan", "Asia" };
         for (int i = 5; i < 9; i++)
         {
-            string regionName = menuTexts[i].text.Substring(2);
+            string regionName = regionNames[i - 5];
             bool isRegionSelected = Array.Exists(filteredRegions, element => element == regionName);
             UI.ChangeText(menuTexts, i, isRegionSelected ? $"x {regionName}" : $"o {regionName}");
         }
@@ -1024,7 +1551,8 @@ public class ControlMenu : MonoBehaviour
         UI.ChangeText(installAfterText, installAfter ? "x Install Once Done" : "o Install Once Done");
 
         Text deleteAfterText = UI.FindInactiveObjectsByPath("Canvas/Menu/Text/UserPreferences/DeleteAfterInstall")?.GetComponent<Text>();
-        UI.ChangeText(deleteAfterText, etaHEN == true ? "x Delete After Install" : (deleteAfter ? "x Delete After Install" : "o Delete After Install"));
+        // UI.ChangeText(deleteAfterText, etaHEN == true ? "x Delete After Install" : (deleteAfter ? "x Delete After Install" : "o Delete After Install"));
+        UI.ChangeText(deleteAfterText, deleteAfter ? "x Delete After Install" : "o Delete After Install");
 
         Text deleteOnCancelText = UI.FindInactiveObjectsByPath("Canvas/Menu/Text/UserPreferences/DeleteOnCancel")?.GetComponent<Text>();
         UI.ChangeText(deleteOnCancelText, deleteOnCancel ? "x Delete On Cancel" : "o Delete On Cancel");
@@ -1069,7 +1597,10 @@ public class ControlMenu : MonoBehaviour
         menuLoaded = !menuLoaded;
 
         if (menuLoaded)
+        {
             UI.ShowUIState(menuCanvas);
+            Menu.HighlightMenuItem(selectedIndex);
+        }
         else
         {
             UI.ShowUIState(null);
@@ -1181,7 +1712,241 @@ public class ControlMenu : MonoBehaviour
 
         toggle = newState == checkedState;
     }
+    #endregion
 
+    #region Queue Management
+    private void AddToQueueUI(KeyValuePair<string, GameContent> contentItem)
+    {
+        if (queued_pkgs == null || contentItem.Value == null) return;
+
+        // Check if this item already exists in the queue list
+        if (queueList.Contains(contentItem.Key)) return;
+
+        // Add to queue list
+        queueList.Add(contentItem.Key);
+
+        // Only update display if queue canvas is active
+        if (queueCanvas.activeSelf)
+        {
+            UpdateQueueDisplay();
+        }
+    }
+
+    private void RemoveFromQueueUI(string contentUrl)
+    {
+        if (queued_pkgs == null) return;
+
+        // Remove from queue list
+        queueList.Remove(contentUrl);
+
+        // Only update display if queue canvas is active
+        if (queueCanvas.activeSelf)
+        {
+            UpdateQueueDisplay();
+        }
+    }
+
+    public void ClearQueueUI()
+    {
+        if (queued_pkgs == null) return;
+
+        // Clear queue list
+        queueList.Clear();
+
+        // Update queue display
+        UpdateQueueDisplay();
+    }
+
+    private void UpdateQueueDisplay()
+    {
+        if (queued_pkgs == null) return;
+
+        // Clear all existing queue items (PKG1-24)
+        for (int i = queued_pkgs.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = queued_pkgs.transform.GetChild(i);
+            if (child.name.StartsWith("PKG"))
+            {
+                DestroyImmediate(child.gameObject);
+            }
+        }
+
+        // Calculate pagination
+        int totalItems = queueList.Count;
+        int totalPages = Mathf.CeilToInt((float)totalItems / queueItemsPerPage);
+        queueCurrentPage = Mathf.Clamp(queueCurrentPage, 0, Mathf.Max(0, totalPages - 1));
+
+        // Reset highlight index if it's out of bounds
+        int itemsOnCurrentPage = Mathf.Min(queueItemsPerPage, totalItems - (queueCurrentPage * queueItemsPerPage));
+        queueHighlightIndex = Mathf.Clamp(queueHighlightIndex, 0, Mathf.Max(0, itemsOnCurrentPage - 1));
+
+        int startIndex = queueCurrentPage * queueItemsPerPage;
+        int endIndex = Mathf.Min(startIndex + queueItemsPerPage, totalItems);
+
+        // Find the Background component to get the prefab
+        Background background = FindObjectOfType<Background>();
+        if (background == null || background.prefab == null) return;
+
+        // Display items for current page
+        for (int i = startIndex; i < endIndex; i++)
+        {
+            string contentUrl = queueList[i];
+
+            // Find the content item from any available cache
+            KeyValuePair<string, GameContent>? contentItem = null;
+
+            // Search in allContentCache which contains everything
+            if (ContentHandler.allContentCache.ContainsKey(contentUrl))
+            {
+                contentItem = new KeyValuePair<string, GameContent>(contentUrl, ContentHandler.allContentCache[contentUrl]);
+            }
+
+            if (contentItem.HasValue)
+            {
+                CreateQueueItem(contentItem.Value, i - startIndex);
+            }
+        }
+    }
+
+    private void CreateQueueItem(KeyValuePair<string, GameContent> contentItem, int displayIndex)
+    {
+        if (queued_pkgs == null || contentItem.Value == null) return;
+
+        // Find the Background component to get the prefab
+        Background background = FindObjectOfType<Background>();
+        if (background == null || background.prefab == null) return;
+
+        // Instantiate the prefab as a child of queued_pkgs
+        GameObject queueItem = Instantiate(background.prefab, queued_pkgs.transform);
+        queueItem.name = $"PKG{displayIndex + 1}";
+
+        // Position the item (similar to how main content is positioned)
+        RectTransform rectTransform = queueItem.GetComponent<RectTransform>();
+        if (rectTransform != null)
+        {
+            const float spacing = 32f;
+            const float offset = -12f;
+            Vector2 startPosition = new Vector2(0, queueItemsPerPage * spacing / 2);
+            Vector2 position = startPosition - new Vector2(0, displayIndex * spacing - offset);
+            rectTransform.anchoredPosition = position;
+        }
+
+        // Find the text components in the instantiated prefab
+        Transform titleIdTransform = queueItem.transform.Find("TitleID");
+        Transform regionTransform = queueItem.transform.Find("Region");
+        Transform titleTransform = queueItem.transform.Find("Title");
+        Transform sizeTransform = queueItem.transform.Find("Size");
+        Transform downloadedTransform = queueItem.transform.Find("Downloaded");
+
+        if (titleIdTransform != null)
+        {
+            Text titleIdText = titleIdTransform.GetComponent<Text>();
+            if (titleIdText != null)
+            {
+                UI.ChangeText(titleIdText, contentItem.Value.title_id);
+                // Shift TitleID to the right
+                RectTransform titleIdRect = titleIdTransform.GetComponent<RectTransform>();
+                if (titleIdRect != null)
+                {
+                    Vector2 currentPos = titleIdRect.anchoredPosition;
+                    titleIdRect.anchoredPosition = new Vector2(currentPos.x + 30, currentPos.y);
+                }
+            }
+        }
+
+        if (regionTransform != null)
+        {
+            Text regionText = regionTransform.GetComponent<Text>();
+            if (regionText != null)
+            {
+                UI.ChangeText(regionText, contentItem.Value.region ?? "???");
+                // Shift Region to the right
+                RectTransform regionRect = regionTransform.GetComponent<RectTransform>();
+                if (regionRect != null)
+                {
+                    Vector2 currentPos = regionRect.anchoredPosition;
+                    regionRect.anchoredPosition = new Vector2(currentPos.x + 30, currentPos.y);
+                }
+            }
+        }
+
+        if (titleTransform != null)
+        {
+            Text titleText = titleTransform.GetComponent<Text>();
+            if (titleText != null)
+            {
+                UI.ChangeText(titleText, contentItem.Value.name);
+                UI.SetFontByText(ref titleText);
+                // Shift Title to the right
+                RectTransform titleRect = titleTransform.GetComponent<RectTransform>();
+                if (titleRect != null)
+                {
+                    Vector2 currentPos = titleRect.anchoredPosition;
+                    titleRect.anchoredPosition = new Vector2(currentPos.x + 30, currentPos.y);
+                }
+            }
+        }
+
+        if (sizeTransform != null)
+        {
+            Text sizeText = sizeTransform.GetComponent<Text>();
+            if (sizeText != null)
+            {
+                UI.ChangeText(sizeText, IO.FormatByteString(contentItem.Value.size));
+                sizeText.gameObject.SetActive(true);
+                // Shift Downloaded to the right
+                RectTransform sizeRect = sizeTransform.GetComponent<RectTransform>();
+                if (sizeRect != null)
+                {
+                    Vector2 currentPos = sizeRect.anchoredPosition;
+                    sizeRect.anchoredPosition = new Vector2(currentPos.x - 40, currentPos.y);
+                }
+            }
+
+
+            // Size is NOT shifted to the right as requested
+        }
+
+        if (downloadedTransform != null)
+        {
+            Text downloadedText = downloadedTransform.GetComponent<Text>();
+            if (downloadedText != null)
+            {
+                UI.ChangeText(downloadedText, "");
+                downloadedText.gameObject.SetActive(false);
+                // Shift Downloaded to the right
+                RectTransform downloadedRect = downloadedTransform.GetComponent<RectTransform>();
+                if (downloadedRect != null)
+                {
+                    Vector2 currentPos = downloadedRect.anchoredPosition;
+                    downloadedRect.anchoredPosition = new Vector2(currentPos.x + 30, currentPos.y);
+                }
+            }
+        }
+
+        // Set the color based on highlighting
+        Color itemColor = (displayIndex == queueHighlightIndex) ? blueish : Color.white;
+        if (titleIdTransform != null)
+        {
+            Text titleIdText = titleIdTransform.GetComponent<Text>();
+            if (titleIdText != null) titleIdText.color = itemColor;
+        }
+        if (regionTransform != null)
+        {
+            Text regionText = regionTransform.GetComponent<Text>();
+            if (regionText != null) regionText.color = itemColor;
+        }
+        if (titleTransform != null)
+        {
+            Text titleText = titleTransform.GetComponent<Text>();
+            if (titleText != null) titleText.color = itemColor;
+        }
+        if (sizeTransform != null)
+        {
+            Text sizeText = sizeTransform.GetComponent<Text>();
+            if (sizeText != null) sizeText.color = itemColor;
+        }
+    }
     #endregion
 
     private IEnumerator Start()
@@ -1213,6 +1978,12 @@ public class ControlMenu : MonoBehaviour
             }
 
             UIManagement.HighlightCurrentPkg();
+
+            // Update queue scrollbar if queue canvas is active
+            if (queueCanvas.activeSelf && queue_scrollbar != null)
+            {
+                UI.UpdateScrollbar();
+            }
 
             yield return null;
         }

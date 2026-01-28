@@ -17,8 +17,27 @@ using Random = System.Random;
 
 public class Utilities : MonoBehaviour
 {
+    public static bool IsPS4TitleId(string id)
+    {
+        if (id == null || id.Length != 9)
+            return false;
+
+        if (!id.StartsWith("CUSA"))
+            return false;
+
+        for (int i = 4; i < 9; i++)
+        {
+            if (!char.IsDigit(id[i]))
+                return false;
+        }
+
+        return true;
+    }
+
     public class UI
     {
+        //  private static bool containerShifted = false;
+
         public static GameObject FindInactiveObjectsByPath(string path)
         {
             Transform[] objs = Resources.FindObjectsOfTypeAll<Transform>();
@@ -54,12 +73,13 @@ public class Utilities : MonoBehaviour
                     || child.name.ToLower().Contains("cross")
                      || child.name.ToLower().Contains("circle")
                      || child.name.ToLower().Contains("square")
-                     || child.name.ToLower().Contains("triangle")))
+                     || child.name.ToLower().Contains("triangle")
+                     || child.name.ToLower().Contains("R3")
+                     || child.name.ToLower().Contains("dpad")))
                     childCount++;
             }
 
             float spacingValue = 0f;
-
             if (childCount == 1)
                 spacingValue = -10;
             else if (childCount == 2)
@@ -67,11 +87,9 @@ public class Utilities : MonoBehaviour
             else if (childCount == 3)
                 spacingValue = -795;
             else
-                spacingValue = -450;
+                spacingValue = -125; // Much more negative for 7 buttons to shift left
 
             layoutGroup.spacing = spacingValue;
-
-            LayoutRebuilder.ForceRebuildLayoutImmediate(container.GetComponent<RectTransform>());
         }
 
         public static void ResizePrefab(Transform container, GameObject prefab, string textStr)
@@ -136,7 +154,7 @@ public class Utilities : MonoBehaviour
             if (container == null) return;
 
             for (int i = container.childCount - 1; i >= 0; i--)
-                GameObject.DestroyImmediate(container.GetChild(i).gameObject);
+                DestroyImmediate(container.GetChild(i).gameObject);
         }
 
         public static void ShowUIState(GameObject canvas)
@@ -147,17 +165,44 @@ public class Utilities : MonoBehaviour
             FindInactiveObjectsByPath("Canvas/Cancel")?.SetActive(false);
             FindInactiveObjectsByPath("Canvas/Update")?.SetActive(false);
             FindInactiveObjectsByPath("Canvas/Close")?.SetActive(false);
+            FindInactiveObjectsByPath("Canvas/Queue")?.SetActive(false);
 
             Background bg = FindInactiveObjectsByPath("Scripts")?.GetComponent<Background>();
             RemoveAllChildren(FindInactiveObjectsByPath("Canvas/Main/Controls")?.GetComponent<Transform>());
 
+            // Reset container position for other pages
+            // if (canvas != null)
+            // {
+            //  RectTransform containerRect = bg.controlContainer.GetComponent<RectTransform>();
+            //  if (containerRect != null)
+            //  {
+            //       Vector2 currentPos = containerRect.anchoredPosition;
+            //       containerRect.anchoredPosition = new Vector2(currentPos.x + 55, currentPos.y);
+            //       containerShifted = false;
+            //   }
+            // }
+
             if (canvas == null)
             {
+                ResizePrefab(bg.controlContainer, bg.dpad_left, "Queue");
+                ResizePrefab(bg.controlContainer, bg.R3, "View Queue");
                 ResizePrefab(bg.controlContainer, bg.touch, "Search");
                 ResizePrefab(bg.controlContainer, bg.cross, "Download");
                 ResizePrefab(bg.controlContainer, bg.square, "Details");
                 ResizePrefab(bg.controlContainer, bg.triangle, "Menu");
                 ResizePrefab(bg.controlContainer, bg.circle, "Exit");
+
+                // Shift container left for equal spacing (only once)
+                //   if (!containerShifted)
+                //  {
+                //       RectTransform containerRect = bg.controlContainer.GetComponent<RectTransform>();
+                //       if (containerRect != null)
+                //       {
+                //           Vector2 currentPos = containerRect.anchoredPosition;
+                //           containerRect.anchoredPosition = new Vector2(currentPos.x - 55, currentPos.y);
+                //          containerShifted = true;
+                //       }
+                //   }
             }
             else
             {
@@ -183,8 +228,15 @@ public class Utilities : MonoBehaviour
                     case "Update":
                     case "Close":
                         ResizePrefab(bg.controlContainer, bg.cross, "Confirm");
-                        ResizePrefab(bg.controlContainer, bg.circle, "Cancel");
+                        ResizePrefab(bg.controlContainer, bg.circle, "Close");
                         break;
+
+                    case "Queue":
+                        ResizePrefab(bg.controlContainer, bg.dpad_left, "Remove");
+                        ResizePrefab(bg.controlContainer, bg.cross, "Confirm");
+                        ResizePrefab(bg.controlContainer, bg.circle, "Close");
+                        break;
+
                 }
             }
 
@@ -218,35 +270,87 @@ public class Utilities : MonoBehaviour
             return true;
         }
 
-        public static void UpdateScrollbar(Scrollbar scrollbar)
+        public static void UpdateScrollbar()
         {
-            if (ContentHandler.filteredCount <= 0)
+            Scrollbar scrollbar;
+
+            var controlMenu = FindObjectOfType<ControlMenu>();
+            if (controlMenu?.queueCanvas.activeSelf == false)
+                scrollbar = controlMenu.content_scrollbar;
+            else
+                scrollbar = controlMenu.queue_scrollbar;
+
+            string parentName = scrollbar.transform.parent.name;
+
+            if (parentName == "PKGs")
             {
-                scrollbar.value = 0;
-                scrollbar.size = 1;
+                if (ContentHandler.filteredCount <= 0)
+                {
+                    scrollbar.value = 0;
+                    scrollbar.size = 1;
 
-                return;
+                    return;
+                }
+
+                ContentHandler.contentScroll = Mathf.Clamp(ContentHandler.contentScroll, 0, ContentHandler.filteredCount - 1);
+
+                int totalVisibleItems = ContentHandler.itemsPerPage;
+                int totalPages = Mathf.CeilToInt((float)ContentHandler.filteredCount / totalVisibleItems);
+
+                ContentHandler.currentPage = Mathf.Clamp(ContentHandler.currentPage, 0, totalPages - 1);
+
+                scrollbar.value = (float)ContentHandler.contentScroll / (ContentHandler.filteredCount - 1);
+
+                float minSize = 0.1f;
+                float maxSize = 0.7f;
+                float sizeFactor = (float)totalVisibleItems / ContentHandler.filteredCount;
+
+                scrollbar.size = Mathf.Clamp(sizeFactor, minSize, maxSize);
+
+                int clampPkgCount = Mathf.Clamp(ContentHandler.filteredCount + 1 - ContentHandler.removedCount, 0, ContentHandler.filteredCount + 1 - ContentHandler.removedCount);
+
+                if (clampPkgCount <= 0)
+                    scrollbar.gameObject.SetActive(false);
             }
+            else
+            {
+                if (controlMenu == null) return;
 
-            ContentHandler.contentScroll = Mathf.Clamp(ContentHandler.contentScroll, 0, ContentHandler.filteredCount - 1);
+                int queueCount = controlMenu.queueList.Count;
 
-            int totalVisibleItems = ContentHandler.itemsPerPage;
-            int totalPages = Mathf.CeilToInt((float)ContentHandler.filteredCount / totalVisibleItems);
+                if (queueCount <= 0)
+                {
+                    scrollbar.value = 0;
+                    scrollbar.size = 1;
+                    scrollbar.gameObject.SetActive(false);
+                    return;
+                }
 
-            ContentHandler.currentPage = Mathf.Clamp(ContentHandler.currentPage, 0, totalPages - 1);
+                scrollbar.gameObject.SetActive(true);
 
-            scrollbar.value = (float)ContentHandler.contentScroll / (ContentHandler.filteredCount - 1);
+                // Calculate queue scrollbar values
+                int queueItemsPerPage = 24; // Match ControlMenu queueItemsPerPage
+                int totalPages = Mathf.CeilToInt((float)queueCount / queueItemsPerPage);
 
-            float minSize = 0.1f;
-            float maxSize = 0.7f;
-            float sizeFactor = (float)totalVisibleItems / ContentHandler.filteredCount;
+                // Calculate current scroll position based on highlight index and page
+                int currentScrollPosition = (controlMenu.queueCurrentPage * queueItemsPerPage) + controlMenu.queueHighlightIndex;
+                currentScrollPosition = Mathf.Clamp(currentScrollPosition, 0, queueCount - 1);
 
-            scrollbar.size = Mathf.Clamp(sizeFactor, minSize, maxSize);
+                // Set scrollbar value (0 to 1) - more responsive calculation
+                float scrollbarValue = 0f;
+                if (queueCount > 1)
+                {
+                    scrollbarValue = (float)currentScrollPosition / (queueCount - 1);
+                }
+                scrollbar.value = scrollbarValue;
 
-            int clampPkgCount = Mathf.Clamp(ContentHandler.filteredCount + 1 - ContentHandler.removedCount, 0, ContentHandler.filteredCount + 1 - ContentHandler.removedCount);
+                // Set scrollbar size based on visible items vs total items (same logic as main content)
+                float minSize = 0.1f;
+                float maxSize = 0.7f;
+                float sizeFactor = (float)queueItemsPerPage / queueCount;
+                scrollbar.size = Mathf.Clamp(sizeFactor, minSize, maxSize);
 
-            if (clampPkgCount <= 0)
-                scrollbar.gameObject.SetActive(false);
+            }
         }
 
         public static string FormatVersion(float? version)
@@ -449,7 +553,7 @@ public class Utilities : MonoBehaviour
                     url = URL.ProperFormatUrl(url);
                     if (URL.IsValidURI(url))
                     {
-                        Print(LogType.Warning, "Attempting to download JSON from: " + url);
+                        Print(LogType.Log, "Attempting to download JSON from: " + url);
                         webContent = await DownloadAsBytes(url);
 
                         if (string.IsNullOrEmpty(webContent))
@@ -579,6 +683,9 @@ public class Utilities : MonoBehaviour
 
                         string downloadLink = "https://www.web.site/" + fileName + ".pkg";
 
+                        string titleId = contentType == ContentType.PS5
+                            ? "PPSA" + id : "CUSA" + id;
+
                         var defaultJson = new
                         {
                             DATA = new Dictionary<string, object>
@@ -586,7 +693,7 @@ public class Utilities : MonoBehaviour
                                 {
                                     downloadLink, new
                                     {
-                                        title_id = "CUSA" + id,
+                                        title_id = titleId,
                                         region,
                                         name = defaultName,
                                         version,
@@ -728,6 +835,9 @@ public class Utilities : MonoBehaviour
 
         public static bool IsValidPackageFile(string filePath)  // shoutout LM
         {
+            if (isConsole == false)
+                return true;
+
             byte[] ExpectedMagic = { 0x7F, (byte)'C', (byte)'N', (byte)'T' };
 
             if (!DoesPathExist(filePath))

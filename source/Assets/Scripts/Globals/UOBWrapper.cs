@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
@@ -15,15 +14,17 @@ public static class UOBWrapper
 {
     internal static class Private
     {
+        internal static readonly Encoding Latin1 = Encoding.GetEncoding("ISO-8859-1");
+
         internal static class Temperature
         {
             private static bool hasTempErrorOccurred;
-            private static readonly Dictionary<UOB.Temperature, Tuple<float?, float?>> lastTemperatureInfo =
-                new Dictionary<UOB.Temperature, Tuple<float?, float?>>
-            {
-                { UOB.Temperature.CPU, Tuple.Create<float?, float?>(null, null) },
-                { UOB.Temperature.SOC, Tuple.Create<float?, float?>(null, null) }
-            };
+            private static readonly Dictionary<UOB.Temperature, Tuple<float?, float?>>
+                lastTemperatureInfo = new Dictionary<UOB.Temperature, Tuple<float?, float?>>
+                {
+                    { UOB.Temperature.CPU, Tuple.Create<float?, float?>(null, null) },
+                    { UOB.Temperature.SOC, Tuple.Create<float?, float?>(null, null) }
+                };
 
             public static void PrintError()
             {
@@ -87,7 +88,7 @@ public static class UOBWrapper
                 {
                     case LogType.Assert: return 0; // DEBUG
                     case LogType.Log: return 1;
-                    case LogType.Warning: return 2; 
+                    case LogType.Warning: return 2;
                     case LogType.Error: return 3;
                     case LogType.Exception: return 4; // CRITIAL
                     default: return (int)type;
@@ -105,7 +106,7 @@ public static class UOBWrapper
             }
         }
 
-        public static string ProperFormatUrl(string url)
+        internal static string ProperFormatUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url))
                 return string.Empty;
@@ -196,7 +197,7 @@ public static class UOBWrapper
         UOB.Temperature temperature = UOB.Temperature.CPU, float min = 55f, float max = 70f)
         => Temperature.Update(textObject, temperature, cold, normal, hot, min, max);
 
-    public static void UpdateDiskInfo(Text textObject, UOB.DiskInfo info)
+    public static void UpdateDiskInfo(Text textObject, UOB.DiskInfo info, string mountPoint = "/user")
     {
         if (Application.platform != RuntimePlatform.PS4 || !UOB.IsFreeOfSandbox()) return; // move the IsFreeOfSandbox() check to the API itself
 
@@ -214,12 +215,12 @@ public static class UOBWrapper
 
         UOB.lastDiskInfo[info] = currentInfo;
 
-        string text = UOB.GetDiskInfoAsFormattedText(info, diskInfo);
+        string text = UOB.GetDiskInfoAsFormattedText(info, mountPoint);
 
         if (textObject != null)
             textObject.text = text;
         else
-            Print("UpdateDiskInfo(Text, UOB.DiskInfo) returned due to \"textObject\" being \"null\".");
+            Print("UpdateDiskInfo(Text, UOB.DiskInfo, string) returned due to \"textObject\" being \"null\".");
     }
 
     public static async Task<string> DownloadAsBytes(string url)
@@ -244,7 +245,7 @@ public static class UOBWrapper
 
             byte[] bytes = new byte[size];
             Marshal.Copy(ptr, bytes, 0, size);
-            return Encoding.UTF8.GetString(bytes).Replace("\r", "").Replace("\n", "");
+            return Latin1.GetString(bytes);
         }
 
         int maxRedirects = 5;
@@ -262,7 +263,6 @@ public static class UOBWrapper
                     return null;
                 }
 
-                // Handle redirects manually
                 if (request.responseCode >= 300 && request.responseCode < 400)
                 {
                     string newUrl = request.GetResponseHeader("Location");
@@ -280,13 +280,65 @@ public static class UOBWrapper
                     return null;
                 }
 
-                return Encoding.UTF8.GetString(data).Replace("\r", "").Replace("\n", "");
+                return Latin1.GetString(data);
             }
         }
 
         Print($"Too many redirects: {url}", LogType.Error);
         return null;
     }
+
+    /*
+        public static async Task<string> DownloadRangeBytes(string url, uint offset, uint size)
+        {
+            url = ProperFormatUrl(url);
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                Print($"Invalid URL format: {url}", LogType.Error);
+                return null;
+            }
+
+            if (Application.platform == RuntimePlatform.PS4)
+            {
+                try
+                {
+                    int outSize;
+                    IntPtr ptr = UOB.DownloadAsBytesRange(url, offset, size, out outSize);
+                    if (ptr == IntPtr.Zero || outSize == 0)
+                        return null;
+                    int len = outSize;
+                    if (size > 0 && outSize >= (int)size)
+                        len = (int)size;
+                    var managed = new byte[len];
+                    Marshal.Copy(ptr, managed, 0, len);
+                    return Latin1.GetString(managed);
+                }
+                catch (Exception ex)
+                {
+                    Print($"Failed to download range via plugin: {ex.Message}", LogType.Error);
+                    return null;
+                }
+            }
+
+            using (UnityWebRequest request = UnityWebRequest.Get(url))
+            {
+                request.SetRequestHeader("Range", "bytes=" + offset + "-" + (offset + size - 1));
+                var operation = request.SendWebRequest();
+                while (!operation.isDone)
+                    await Task.Yield();
+
+                if (request.isNetworkError || request.isHttpError)
+                {
+                    Print($"Failed to download range from {url}:\nError: {request.error}", LogType.Error);
+                    return null;
+                }
+
+                var bytes = request.downloadHandler.data;
+                if (bytes == null || bytes.Length == 0) return null;
+                return Latin1.GetString(bytes);
+            }
+        }
+     */
 
     public static bool SetImageFromURL(string url, ref RawImage image)
     {
@@ -341,6 +393,44 @@ public static class UOBWrapper
             }
         }
 
+        if (imageBytes == null || imageBytes.Length == 0)
+        {
+            Print("Downloaded image bytes are invalid.", LogType.Error);
+            image.gameObject.SetActive(false);
+            return false;
+        }
+
+        if (imageBytes.Length < 2 ||
+            !(imageBytes[0] == 0xFF
+            && imageBytes[1] == 0xD8) && // JPG
+            !(imageBytes.Length >= 4
+            && imageBytes[0] == 0x89 &&
+            imageBytes[1] == 0x50
+            && imageBytes[2] == 0x4E
+            && imageBytes[3] == 0x47) && // PNG
+            !(imageBytes[0] == 0x42
+            && imageBytes[1] == 0x4D))   // BMP
+        {
+            Print("Downloaded image is not a valid image.", LogType.Error);
+            image.gameObject.SetActive(false);
+            return false;
+        }
+
+        Texture2D texture = new Texture2D(2, 2);
+        if (!texture.LoadImage(imageBytes) || texture.width == 0 || texture.height == 0)
+        {
+            Print("Failed to load image from bytes or is invalid.", LogType.Error);
+            image.gameObject.SetActive(false);
+            return false;
+        }
+
+        image.texture = texture;
+        image.gameObject.SetActive(true);
+        return true;
+    }
+
+    public static bool SetImageFromBytes(byte[] imageBytes, ref RawImage image)
+    {
         if (imageBytes == null || imageBytes.Length == 0)
         {
             Print("Downloaded image bytes are invalid.", LogType.Error);

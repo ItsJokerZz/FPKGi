@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -20,7 +21,7 @@ public class ContentHandler : MonoBehaviour
     public static int contentScroll = 0;
     public static int itemsPerPage = 30;
     public static int currentPage = 0;
-    
+
     public Text pkgCount;
 
     public Font Multi, Arabic, Korean, Asian;
@@ -263,6 +264,10 @@ public class ContentHandler : MonoBehaviour
 
     public static class UIManagement
     {
+        private static Dictionary<string, Font> fontCache = new Dictionary<string, Font>();
+        private static Dictionary<string, int> cachedCounts = new Dictionary<string, int>();
+        private static Dictionary<string, List<KeyValuePair<string, GameContent>>> cachedItemsList = new Dictionary<string, List<KeyValuePair<string, GameContent>>>();
+
         public static void ClearDisplayedItems()
         {
             foreach (var pkg in Content.PKGs)
@@ -275,6 +280,7 @@ public class ContentHandler : MonoBehaviour
                 UI.ChangeText(pkg.Size, string.Empty);
             }
         }
+        [DllImport("UnityOrbisBridge")] public static extern long GetRemoteFileSize(string url);
 
         public static void DisplayItems(IEnumerable<KeyValuePair<string, GameContent>> items)
         {
@@ -283,7 +289,11 @@ public class ContentHandler : MonoBehaviour
             var displayedTitles = new HashSet<string>();
             var duplicateTitles = new HashSet<string>();
             var validRegions = new HashSet<string> { "asia", "eur", "jap", "usa", "all" };
-            var package = new PKG();
+            var contentHandler = FindObjectOfType<ContentHandler>();
+            var invalidFileNameChars = Path.GetInvalidFileNameChars();
+
+            var arabicFont = contentHandler?.Arabic;
+            var multiFont = contentHandler?.Multi;
 
             foreach (var itemGroup in groupedItemsByKey)
             {
@@ -291,19 +301,14 @@ public class ContentHandler : MonoBehaviour
                 {
                     if (currentIndex >= Content.PKGs.Count) break;
 
-                    package = Content.PKGs[currentIndex];
+                    var package = Content.PKGs[currentIndex];
                     if (package == null || item.Value == null || string.IsNullOrEmpty(item.Value.title_id)
                         || string.IsNullOrEmpty(item.Value.name) || string.IsNullOrEmpty(item.Value.size))
                         continue;
 
-                    string region = item.Value.region?.ToLower().Trim();
-                    if (string.IsNullOrEmpty(region) || !validRegions.Contains(region) ||
-                        region.Length > 4 || region == "unk" || region == "???")
-                        item.Value.region = "???";
-                    else
-                        item.Value.region = region.ToUpper();
+                    string region = ProcessRegion(item.Value.region);
+                    item.Value.region = region;
 
-                    item.Value.region = item.Value.region.Replace("UNK", "???");
                     item.Value.min_fw = string.IsNullOrEmpty(item.Value.min_fw) ? "?.??" : item.Value.min_fw;
                     item.Value.release = string.IsNullOrEmpty(item.Value.release) ? "UNKNOWN" : item.Value.release;
                     item.Value.version = item.Value.version ?? "?.??";
@@ -317,67 +322,157 @@ public class ContentHandler : MonoBehaviour
                     string titleToDisplay = duplicateTitles.Contains(item.Value.name)
                         ? $"{item.Value.name} [v{item.Value.version}]" : item.Value.name;
 
-                    UI.ChangeText(package.TitleID, item.Value.title_id);
-                    UI.ChangeText(package.Region, item.Value.region.ToUpper());
-                    UI.ChangeText(package.Title, titleToDisplay);
-                    UI.ChangeText(package.Size, IO.FormatByteString(item.Value.size));
+                    UpdatePackageUI(package, item.Value.title_id, region, titleToDisplay, item.Value.size);
+                 // UpdatePackageUI(package, item.Value.title_id, region, titleToDisplay, GetRemoteFileSize(item.Key).ToString());
 
-                    UI.SetFontByText(ref package.Title);
-
-                    if (package.Title.font == FindObjectOfType<ContentHandler>()?.Arabic)
-                        package.Title.fontSize = 18;
-                    else package.Title.fontSize = 28;
+                    SetFontByTextCached(ref package.Title, titleToDisplay, arabicFont, multiFont);
 
                     currentIndex++;
                 }
 
-                package.Downloaded.gameObject.SetActive(false);
-                UI.ChangeText(package.Downloaded, "");
-                package.Downloaded.color = Color.white;
-
-                string sanitizedFilename = package.Title.text;
-                foreach (char invalidChar in Path.GetInvalidFileNameChars())
-                    sanitizedFilename = sanitizedFilename.Replace(invalidChar.ToString(), string.Empty);
-
-                sanitizedFilename = sanitizedFilename.Length > 255 ? sanitizedFilename.Substring(0, 255) : sanitizedFilename;
-
-                var packagePath = Path.Combine(downloadPath, $"[{package.TitleID.text}] {sanitizedFilename}.pkg");
-                bool isFullyDownloaded = File.Exists(packagePath) && IO.IsValidPackageFile(packagePath);
-                bool isPartiallyDownloaded = File.Exists($"{packagePath}.resume") && !isFullyDownloaded;
-                bool isInstalled = isConsole && UOB.CheckIfAppExists(package.TitleID.text);
-
-                if (isInstalled)
-                {
-                    package.Downloaded.gameObject.SetActive(true);
-                    UI.ChangeText(package.Downloaded, "x");
-                    package.Downloaded.color = blueish;
-                }
-                else if (isFullyDownloaded)
-                {
-                    package.Downloaded.gameObject.SetActive(true);
-                    UI.ChangeText(package.Downloaded, "+");
-                    package.Downloaded.color = yellowish;
-                }
-                else if (isPartiallyDownloaded)
-                {
-                    package.Downloaded.gameObject.SetActive(true);
-                    UI.ChangeText(package.Downloaded, "o");
-                    package.Downloaded.color = redish;
-                }
-                else
-                {
-                    package.Downloaded.gameObject.SetActive(false);
-                    UI.ChangeText(package.Downloaded, "");
-                    package.Downloaded.color = Color.white;
-                }
+                UpdateDownloadStatus(Content.PKGs[currentIndex - 1], invalidFileNameChars);
             }
         }
 
-        public static void UpdateScrollbar()
+        private static string ProcessRegion(string region)
         {
-            var controlMenu = FindObjectOfType<ControlMenu>();
-            if (controlMenu?.scrollbar != null)
-                UI.UpdateScrollbar(controlMenu.scrollbar);
+            if (string.IsNullOrEmpty(region))
+                return "???";
+
+            region = region.ToLower().Trim();
+
+            if (region == "unk" || region == "???" || region.Length > 4)
+                return "???";
+
+            var validRegions = new HashSet<string> { "asia", "eur", "jap", "usa", "all" };
+            return validRegions.Contains(region) ? region.ToUpper() : "???";
+        }
+
+        private static void UpdatePackageUI(PKG package, string titleId, string region, string title, string size)
+        {
+            UI.ChangeText(package.TitleID, titleId);
+            UI.ChangeText(package.Region, region);
+            UI.ChangeText(package.Title, title);
+            UI.ChangeText(package.Size, IO.FormatByteString(size));
+        }
+
+        private static void SetFontByTextCached(ref Text text, string textContent, Font arabicFont, Font multiFont)
+        {
+            Font cachedFont;
+            if (fontCache.TryGetValue(textContent, out cachedFont))
+                text.font = cachedFont;
+            else
+            {
+                Font detectedFont = DetectFontOptimized(textContent, arabicFont, multiFont);
+                fontCache[textContent] = detectedFont;
+                text.font = detectedFont;
+            }
+
+            text.fontSize = text.font == arabicFont ? 18 : 28;
+        }
+
+        private static Font DetectFontOptimized(string text, Font arabicFont, Font multiFont)
+        {
+            if (string.IsNullOrEmpty(text))
+                return multiFont;
+
+            int sampleSize = Math.Min(text.Length, 20);
+            int step = Math.Max(1, text.Length / sampleSize);
+
+            int arabic = 0, asian = 0, korean = 0;
+
+            for (int i = 0; i < text.Length; i += step)
+            {
+                char c = text[i];
+
+                if ((c >= 0x0600 && c <= 0x06FF) ||
+                    (c >= 0x0750 && c <= 0x077F) ||
+                    (c >= 0x08A0 && c <= 0x08FF))
+                    arabic++;
+                else if ((c >= 0x4E00 && c <= 0x9FFF) ||
+                    (c >= 0x3400 && c <= 0x4DBF) ||
+                    (c >= 0x3100 && c <= 0x312F) ||
+                    (c >= 0x2F00 && c <= 0x2FDF) ||
+                    (c >= 0x3040 && c <= 0x309F) ||
+                    (c >= 0x30A0 && c <= 0x30FF) ||
+                    (c >= 0x20000 && c <= 0x2A6DF))
+                    asian++;
+                else if ((c >= 0xAC00 && c <= 0xD7AF) ||
+                    (c >= 0x1100 && c <= 0x11FF) ||
+                    (c >= 0x3130 && c <= 0x318F))
+                    korean++;
+            }
+
+            var contentHandler = FindObjectOfType<ContentHandler>();
+            if (arabic > 0)
+                return arabicFont;
+            else if (asian > 0)
+                return contentHandler?.Asian ?? multiFont;
+            else if (korean > 0)
+                return contentHandler?.Korean ?? multiFont;
+            else
+                return multiFont;
+        }
+
+        private static string SanitizeFilename(string filename, char[] invalidChars)
+        {
+            if (string.IsNullOrEmpty(filename))
+                return string.Empty;
+
+            var sb = new System.Text.StringBuilder(filename);
+            foreach (char invalidChar in invalidChars)
+                sb.Replace(invalidChar.ToString(), string.Empty);
+
+            string result = sb.ToString();
+            return result.Length > 255 ? result.Substring(0, 255) : result;
+        }
+
+        private static void UpdateDownloadStatus(PKG package, char[] invalidFileNameChars)
+        {
+            package.Downloaded.gameObject.SetActive(false);
+            UI.ChangeText(package.Downloaded, "");
+            package.Downloaded.color = Color.white;
+
+            string sanitizedFilename = SanitizeFilename(package.Title.text, invalidFileNameChars);
+            var packagePath = Path.Combine(downloadPath, $"[{package.TitleID.text}] {sanitizedFilename}.pkg");
+
+            bool isFullyDownloaded = File.Exists(packagePath) && IO.IsValidPackageFile(packagePath);
+            bool isPartiallyDownloaded = !isFullyDownloaded && File.Exists($"{packagePath}.resume");
+            bool isInstalled = isConsole && UOB.CheckIfAppExists(package.TitleID.text);
+
+            if (isInstalled)
+            {
+                package.Downloaded.gameObject.SetActive(true);
+                UI.ChangeText(package.Downloaded, "x");
+                package.Downloaded.color = blueish;
+            }
+            else if (isFullyDownloaded)
+            {
+                package.Downloaded.gameObject.SetActive(true);
+                UI.ChangeText(package.Downloaded, "+");
+                package.Downloaded.color = yellowish;
+            }
+            else if (isPartiallyDownloaded)
+            {
+                package.Downloaded.gameObject.SetActive(true);
+                UI.ChangeText(package.Downloaded, "o");
+                package.Downloaded.color = redish;
+            }
+        }
+
+        public static void UpdateAllDownloadStatuses()
+        {
+            if (Content.PKGs == null || Content.PKGs.Count == 0) return;
+
+            var invalidFileNameChars = Path.GetInvalidFileNameChars();
+
+            foreach (var pkg in Content.PKGs)
+            {
+                if (pkg == null || string.IsNullOrEmpty(pkg.TitleID.text) || string.IsNullOrEmpty(pkg.Title.text))
+                    continue;
+
+                UpdateDownloadStatus(pkg, invalidFileNameChars);
+            }
         }
 
         public static void UpdateHomebrewContent()
@@ -453,20 +548,36 @@ public class ContentHandler : MonoBehaviour
                     parsedData = contentTypeCache[(ContentType)contentFilter];
             }
 
-            var itemsList = parsedData
-                .Where(item => item.Value != null &&
-                    !string.IsNullOrEmpty(item.Value.title_id) &&
-                    !string.IsNullOrEmpty(item.Value.name) &&
-                    !string.IsNullOrEmpty(item.Value.size)).ToList();
+            // Cache filtered and sorted items for ALL page to avoid expensive operations
+            string cacheKey = $"itemsList_{contentFilter}_{string.Join(",", filteredRegions)}_{searchFilter}_{sortCriteria}_{ascending}";
+            IEnumerable<KeyValuePair<string, GameContent>> sortedItemsList;
 
-            if ((ContentType)contentFilter == ContentType.ALL ||
-                contentFilter == (int)ContentType.Homebrew)
-                itemsList = Filtering.FilterByRegion(itemsList);
+            if ((ContentType)contentFilter == ContentType.ALL && cachedItemsList.ContainsKey(cacheKey))
+            {
+                sortedItemsList = cachedItemsList[cacheKey];
+                filteredCount = sortedItemsList.Count();
+            }
+            else
+            {
+                var itemsList = parsedData
+                    .Where(item => item.Value != null &&
+                        !string.IsNullOrEmpty(item.Value.title_id) &&
+                        !string.IsNullOrEmpty(item.Value.name) &&
+                        !string.IsNullOrEmpty(item.Value.size)).ToList();
 
-            itemsList = Filtering.ApplyFilter(itemsList);
+                if ((ContentType)contentFilter == ContentType.ALL ||
+                    contentFilter == (int)ContentType.Homebrew)
+                    itemsList = Filtering.FilterByRegion(itemsList);
 
-            filteredCount = itemsList.Count;
-            var sortedItemsList = Filtering.SortItems(itemsList);
+                itemsList = Filtering.ApplyFilter(itemsList);
+
+                filteredCount = itemsList.Count;
+                sortedItemsList = Filtering.SortItems(itemsList);
+
+                // Cache for ALL page
+                if ((ContentType)contentFilter == ContentType.ALL)
+                    cachedItemsList[cacheKey] = sortedItemsList.ToList();
+            }
             if (startIndex >= sortedItemsList.Count())
             {
                 currentPage = Mathf.Max(0, (sortedItemsList.Count() - 1) / itemsPerPage);
@@ -488,7 +599,7 @@ public class ContentHandler : MonoBehaviour
                 }
             }
 
-            UpdateScrollbar();
+            UI.UpdateScrollbar();
         }
 
         public static async void UpdatePkgCount()
@@ -520,6 +631,9 @@ public class ContentHandler : MonoBehaviour
                 contentTypeCache.Clear();
                 allContentCache.Clear();
                 homebrewCombinedCache.Clear();
+                fontCache.Clear();
+                cachedCounts.Clear();
+                cachedItemsList.Clear();
 
                 ControlMenu.reloadTriggered = true;
             }
@@ -598,14 +712,22 @@ public class ContentHandler : MonoBehaviour
 
             int currentFilteredCount = currentItems.Count;
 
-            int fullCount = contentTypeCache.ContainsKey(ContentType.ALL)
-                ? contentTypeCache[ContentType.ALL]
-                      .Where(item => item.Value != null &&
-                                     !string.IsNullOrEmpty(item.Value.title_id) &&
-                                     !string.IsNullOrEmpty(item.Value.name) &&
-                                     !string.IsNullOrEmpty(item.Value.size) &&
-                                     !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
-                      .Count() : 0;
+            int fullCount = 0;
+            if (contentTypeCache.ContainsKey(ContentType.ALL))
+            {
+                // Cache the count to avoid expensive LINQ operations
+                if (!cachedCounts.ContainsKey("fullCount"))
+                {
+                    cachedCounts["fullCount"] = contentTypeCache[ContentType.ALL]
+                        .Where(item => item.Value != null &&
+                                       !string.IsNullOrEmpty(item.Value.title_id) &&
+                                       !string.IsNullOrEmpty(item.Value.name) &&
+                                       !string.IsNullOrEmpty(item.Value.size) &&
+                                       !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
+                        .Count();
+                }
+                fullCount = cachedCounts["fullCount"];
+            }
 
             int currentCount = contentTypeCache.ContainsKey(currentType)
                 ? contentTypeCache[currentType]
@@ -620,14 +742,22 @@ public class ContentHandler : MonoBehaviour
 
             if ((ContentType)contentFilter == ContentType.ALL)
             {
-                int filteredAllCount = Filtering.FilterByRegion(contentTypeCache[ContentType.ALL].ToList())
-                    .Where(item => item.Value != null &&
-                                   !string.IsNullOrEmpty(item.Value.title_id) &&
-                                   !string.IsNullOrEmpty(item.Value.name) &&
-                                   !string.IsNullOrEmpty(item.Value.size) &&
-                                   !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
-                    .Count();
+                // Cache filtered count to avoid expensive LINQ operations
+                string cacheKey = $"filteredAllCount_{string.Join(",", filteredRegions)}";
+                int filteredAllCount;
 
+                if (!cachedCounts.ContainsKey(cacheKey))
+                {
+                    cachedCounts[cacheKey] = Filtering.FilterByRegion(contentTypeCache[ContentType.ALL].ToList())
+                        .Where(item => item.Value != null &&
+                                       !string.IsNullOrEmpty(item.Value.title_id) &&
+                                       !string.IsNullOrEmpty(item.Value.name) &&
+                                       !string.IsNullOrEmpty(item.Value.size) &&
+                                       !(GoldHEN == true && (item.Key.Contains("PS5") || item.Value.name.Contains("PS5"))))
+                        .Count();
+                }
+
+                filteredAllCount = cachedCounts[cacheKey];
                 int leftValue = Mathf.Clamp(filteredAllCount - removedCount, 0, filteredAllCount - removedCount);
 
                 UI.ChangeText(contentHandler?.pkgCount, $"Content: {leftValue} [{fullCount}]");
@@ -638,9 +768,15 @@ public class ContentHandler : MonoBehaviour
             allCachedCount = fullCount;
         }
 
+        private static int lastContentScroll = -1;
+        private static int lastContentFilter = -1;
+
         public static void HighlightCurrentPkg()
         {
             if (Content.PKGs == null || Content.PKGs.Count == 0) return;
+
+            // Update install state for all displayed packages every frame
+            UpdateAllDownloadStatuses();
 
             int pageIndex = contentScroll % itemsPerPage;
             currentPkg = Content.PKGs[pageIndex];
@@ -664,8 +800,20 @@ public class ContentHandler : MonoBehaviour
                 }
             }
 
-            UpdateContent(contentScroll / itemsPerPage);
-            UpdatePkgCount();
+            // Only update content when scroll position or filter actually changes
+            int currentPage = contentScroll / itemsPerPage;
+            if (lastContentScroll != contentScroll || lastContentFilter != contentFilter)
+            {
+                UpdateContent(currentPage);
+                lastContentScroll = contentScroll;
+                lastContentFilter = contentFilter;
+            }
+
+            // Only update count when needed (not every frame)
+            if (ControlMenu.reloadTriggered || toggleBackToLocal)
+            {
+                UpdatePkgCount();
+            }
 
             Dictionary<string, GameContent> currentCache = (ContentType)contentFilter == ContentType.Homebrew
             ? GetHomebrewCombinedCache() : (ContentType)contentFilter == ContentType.ALL
